@@ -1,4 +1,4 @@
-# 🎉 COMPLETE PROJECT SUMMARY
+#  COMPLETE PROJECT SUMMARY
 
 ## 📦 What You've Built
 

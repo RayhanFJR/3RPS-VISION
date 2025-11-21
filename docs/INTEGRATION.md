@@ -12,17 +12,17 @@
 │         Control Server (Linux/Windows/Mac)               │
 │  - Trajectory Manager                                    │
 │  - State Machine                                         │
-│  - Modbus Server (0.0.0.0:5020)                         │
-└────────────┬────────────────────────────────────────────┘
+│  - Modbus Server (0.0.0.0:5020)                          │
+└────────────┬─────────────────────────────────────────────┘
              │ Serial Port (115200)
              │ /dev/ttyACM0 (Linux)
              │ COM3 (Windows)
              │ /dev/tty.usbmodem (Mac)
              │
 ┌────────────┴────────────────────────────────────────────┐
-│            Arduino Microcontroller                       │
-│  - Motor Controller                                      │
-│  - Sensor Reading (encoders, load cell, current)       │
+│            Arduino Microcontroller                      │
+│  - Motor Controller                                     │
+│  - Sensor Reading (encoders, load cell, current)        │
 │  - Load-based Adaptive Control                          │
 └────────────┬────────────────────────────────────────────┘
              │ Analog/Digital I/O
@@ -38,10 +38,10 @@
 OPTIONAL: Vision System (Separate Process)
 ┌──────────────────────────────────────────────────────────┐
 │              Vision System (Python)                      │
-│  - MediaPipe Pose Detection                             │
-│  - Foot Angle Calculation                               │
-│  - PID Control Output                                   │
-│  - Real-time Display                                    │
+│  - MediaPipe Pose Detection                              │
+│  - Foot Angle Calculation                                │
+│  - PID Control Output                                    │
+│  - Real-time Display                                     │
 └──────────────────────────────────────────────────────────┘
 ```
 
