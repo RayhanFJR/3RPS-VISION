@@ -134,6 +134,8 @@ rehabilitation-system/
     └── Dockerfile                     # Containerization
 ---
 
+```
+
 ## 🔧 Module Descriptions
 
 ### **1. MotorController** - Motor Control Management
