@@ -1,5 +1,5 @@
 //==================================================================
-// FILE 2: firmware/src/config/constants.h
+// FILE : firmware/src/config/constants.h
 //==================================================================
 
 #ifndef CONSTANTS_H
