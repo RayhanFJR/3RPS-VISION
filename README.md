@@ -7,29 +7,131 @@
 ## 📁 Folder Structure
 
 ```
-firmware/
-├── src/
-│   ├── main.cpp                    # Main program entry point
-│   │
-│   ├── config/                     # Configuration files
-│   │   ├── pins.h                  # Pin definitions
-│   │   └── constants.h             # System constants & tunable parameters
-│   │
-│   ├── control/                    # Motor control modules
-│   │   ├── MotorController.h/.cpp  # Multi-motor management
-│   │   └── AdaptiveControl.h/.cpp  # (Future) Adaptive CTC
-│   │
-│   ├── io/                         # Input/Output modules
-│   │   ├── LoadCell.h/.cpp         # HX711 load cell interface
-│   │   ├── CurrentSensor.h/.cpp    # Current sensing (ACS758 or similar)
-│   │   ├── SerialComm.h/.cpp       # Serial communication wrapper
-│   │   └── CommandParser.h/.cpp    # Parse commands from PC
-│   │
-│   └── ...
+rehabilitation-system/
+├── README.md                          # Dokumentasi utama project
+├── .gitignore                         # File git ignore
 │
-└── platformio.ini                  # PlatformIO build config
-```
-
+├── 📂 docs/                           # Dokumentasi
+│   ├── ARCHITECTURE.md                # Arsitektur sistem
+│   ├── SETUP.md                       # Panduan setup
+│   ├── API.md                         # Dokumentasi API/Protocol
+│   └── TROUBLESHOOTING.md             # Tips & tricks
+│
+├── 📂 hardware/                       # Dokumentasi hardware
+│   ├── schematic.pdf                  # Skema rangkaian
+│   ├── pin_mapping.txt                # Mapping pin Arduino
+│   └── bill_of_materials.txt          # Daftar komponen
+│
+├── 📂 firmware/                       # Code Arduino
+│   ├── CMakeLists.txt                 # Build configuration
+│   ├── platformio.ini                 # PlatformIO config (opsional)
+│   │
+│   ├── 📂 src/
+│   │   ├── main.cpp                   # Main firmware (dari controll_2.ino)
+│   │   │
+│   │   ├── 📂 control/
+│   │   │   ├── MotorController.h/.cpp
+│   │   │   ├── AdaptiveControl.h/.cpp
+│   │   │   ├── LoadCell.h/.cpp
+│   │   │   └── CommandParser.h/.cpp
+│   │   │
+│   │   ├── 📂 io/
+│   │   │   ├── SerialComm.h/.cpp
+│   │   │   ├── EncoderReader.h/.cpp
+│   │   │   └── CurrentSensor.h/.cpp
+│   │   │
+│   │   └── 📂 config/
+│   │       ├── pins.h                 # Pin definitions
+│   │       ├── constants.h            # Konstanta sistem
+│   │       └── tuning_params.h        # Parameter tuning
+│   │
+│   └── 📂 test/
+│       ├── motor_test.cpp
+│       └── sensor_test.cpp
+│
+├── 📂 server/                         # Code C++ Server (Modbus)
+│   ├── CMakeLists.txt
+│   ├── 📂 src/
+│   │   ├── main.cpp                   # Main server (dari main_tra.cpp)
+│   │   │
+│   │   ├── 📂 modbus/
+│   │   │   ├── ModbusServer.h/.cpp
+│   │   │   ├── RegisterMap.h           # Address mapping
+│   │   │   └── DataHandler.h/.cpp
+│   │   │
+│   │   ├── 📂 trajectory/
+│   │   │   ├── TrajectoryManager.h/.cpp
+│   │   │   ├── DataLoader.h/.cpp      # Load trajectory data
+│   │   │   └── CycleController.h/.cpp
+│   │   │
+│   │   ├── 📂 serial/
+│   │   │   ├── SerialPort.h/.cpp
+│   │   │   └── ArduinoFeedback.h/.cpp
+│   │   │
+│   │   ├── 📂 state_machine/
+│   │   │   ├── StateMachine.h
+│   │   │   └── StateHandlers.h/.cpp
+│   │   │
+│   │   └── 📂 config/
+│   │       ├── config.h               # Server config
+│   │       └── trajectory_paths.h     # Path ke trajectory data
+│   │
+│   └── 📂 test/
+│       └── modbus_test.cpp
+│
+├── 📂 vision/                         # Code Python - Vision/Foot Angle
+│   ├── requirements.txt               # Python dependencies
+│   │
+│   ├── 📂 src/
+│   │   ├── main.py                    # Main script (dari mp_footangle.py)
+│   │   │
+│   │   ├── 📂 vision/
+│   │   │   ├── PoseEstimator.py       # MediaPipe integration
+│   │   │   ├── AngleCalculator.py     # Hitung sudut
+│   │   │   └── FrameProcessor.py      # Process frame
+│   │   │
+│   │   ├── 📂 control/
+│   │   │   ├── PIDController.py       # PID logic
+│   │   │   └── Calibration.py         # Kalibrasi
+│   │   │
+│   │   ├── 📂 utils/
+│   │   │   ├── Logger.py              # Logging utilities
+│   │   │   ├── ConfigLoader.py        # Load config
+│   │   │   └── DataBuffer.py          # Smoothing buffer
+│   │   │
+│   │   └── 📂 config/
+│   │       ├── __init__.py
+│   │       ├── settings.py            # Main settings
+│   │       └── camera_config.yaml     # Camera config
+│   │
+│   └── 📂 test/
+│       └── test_angle_calculation.py
+│
+├── 📂 data/                           # Data trajectory
+│   ├── 📂 trajectory_1/
+│   │   ├── grafik.txt
+│   │   ├── pos1.txt, pos2.txt, pos3.txt
+│   │   ├── velo1.txt, velo2.txt, velo3.txt
+│   │   └── fc1.txt, fc2.txt, fc3.txt
+│   ├── 📂 trajectory_2/
+│   └── 📂 trajectory_3/
+│
+├── 📂 tools/                          # Utility scripts
+│   ├── trajectory_generator.py        # Generate trajectory
+│   ├── data_plotter.py               # Plot trajectory
+│   └── calibration_tool.py           # Calibration helper
+│
+├── 📂 scripts/                        # Setup & run scripts
+│   ├── install_dependencies.sh        # Install semua dependencies
+│   ├── build_firmware.sh              # Build Arduino firmware
+│   ├── build_server.sh                # Build C++ server
+│   ├── run_vision.sh                  # Run Python vision
+│   └── test_system.sh                 # Test keseluruhan sistem
+│
+└── 📂 CI-CD/                          # (Opsional) Build automation
+    ├── .github/workflows/
+    │   └── build.yml                  # GitHub Actions workflow
+    └── Dockerfile                     # Containerization
 ---
 
 ## 🔧 Module Descriptions
