@@ -1,121 +1,181 @@
 //==================================================================
-// FILE : server/src/modbus/ModbusServer.cpp
+// FILE: server/src/modbus/ModbusServer.cpp
+// FIXED: Match with updated header file
 //==================================================================
-#include "ModbusServer.h"
+
+#include "modbus/ModbusServer.h"
 #include <iostream>
 #include <cstring>
-ModbusServer::ModbusServer() {
-mb_ctx = nullptr;
-mb_mapping = nullptr;
-server_socket = -1;
+#include <unistd.h>
+#include <errno.h>
+
+// Constants
+constexpr int NUM_COILS = 100;
+constexpr int NUM_DISCRETE_INPUTS = 100;
+constexpr int NUM_HOLDING_REGISTERS = 10000;
+constexpr int NUM_INPUT_REGISTERS = 10000;
+
+ModbusServer::ModbusServer() 
+    : ctx(nullptr),
+      mb_mapping(nullptr),
+      server_socket(-1),
+      connected(false) {
 }
+
 ModbusServer::~ModbusServer() {
-if (mb_mapping) {
-modbus_mapping_free(mb_mapping);
-}
-if (mb_ctx) {
-modbus_close(mb_ctx);
-modbus_free(mb_ctx);
-}
-}
-bool ModbusServer::initialize(const char* ip, int port) {
-// Create TCP context
-mb_ctx = modbus_new_tcp(ip, port);
-if (!mb_ctx) {
-std::cerr << "Error: Failed to create Modbus TCP context" << std::endl;
-return false;
-}
-// Allocate memory mapping
-mb_mapping = modbus_mapping_new(0, 0, NUM_REGISTERS, 0);
-if (!mb_mapping) {
-    std::cerr << "Error: Failed to allocate Modbus mapping" << std::endl;
-    modbus_free(mb_ctx);
-    mb_ctx = nullptr;
-    return false;
+    closeConnection();
+    
+    if (mb_mapping) {
+        modbus_mapping_free(mb_mapping);
+        mb_mapping = nullptr;
+    }
+    
+    if (ctx) {
+        modbus_free(ctx);
+        ctx = nullptr;
+    }
 }
 
-// Set slave ID
-modbus_set_slave(mb_ctx, 1);
-
-// Listen for connections
-server_socket = modbus_tcp_listen(mb_ctx, 1);
-if (server_socket == -1) {
-    std::cerr << "Error: Failed to listen on Modbus port" << std::endl;
-    modbus_mapping_free(mb_mapping);
-    modbus_free(mb_ctx);
-    return false;
+bool ModbusServer::initialize(const std::string& ip, int port) {
+    std::cout << "[ModbusServer] Initializing on " << ip << ":" << port << std::endl;
+    
+    // Create TCP context
+    ctx = modbus_new_tcp(ip.c_str(), port);
+    if (!ctx) {
+        std::cerr << "[ModbusServer] Failed to create Modbus context" << std::endl;
+        return false;
+    }
+    
+    // Allocate memory for registers
+    mb_mapping = modbus_mapping_new(
+        NUM_COILS,              // Coils
+        NUM_DISCRETE_INPUTS,    // Discrete inputs
+        NUM_HOLDING_REGISTERS,  // Holding registers
+        NUM_INPUT_REGISTERS     // Input registers
+    );
+    
+    if (!mb_mapping) {
+        std::cerr << "[ModbusServer] Failed to allocate Modbus mapping" << std::endl;
+        modbus_free(ctx);
+        ctx = nullptr;
+        return false;
+    }
+    
+    // Initialize all registers to 0
+    memset(mb_mapping->tab_bits, 0, NUM_COILS);
+    memset(mb_mapping->tab_input_bits, 0, NUM_DISCRETE_INPUTS);
+    memset(mb_mapping->tab_registers, 0, NUM_HOLDING_REGISTERS * sizeof(uint16_t));
+    memset(mb_mapping->tab_input_registers, 0, NUM_INPUT_REGISTERS * sizeof(uint16_t));
+    
+    // Create TCP socket
+    server_socket = modbus_tcp_listen(ctx, 1);
+    if (server_socket == -1) {
+        std::cerr << "[ModbusServer] Failed to create TCP socket: " 
+                  << modbus_strerror(errno) << std::endl;
+        modbus_mapping_free(mb_mapping);
+        modbus_free(ctx);
+        mb_mapping = nullptr;
+        ctx = nullptr;
+        return false;
+    }
+    
+    std::cout << "[ModbusServer] Server initialized successfully" << std::endl;
+    return true;
 }
 
-std::cout << "[ModbusServer] Listening on " << ip << ":" << port << std::endl;
-return true;
+bool ModbusServer::acceptConnection() {
+    if (!ctx || server_socket == -1) {
+        std::cerr << "[ModbusServer] Cannot accept - server not initialized" << std::endl;
+        return false;
+    }
+    
+    std::cout << "[ModbusServer] Waiting for client connection..." << std::endl;
+    
+    int client_socket = modbus_tcp_accept(ctx, &server_socket);
+    if (client_socket == -1) {
+        std::cerr << "[ModbusServer] Failed to accept connection: " 
+                  << modbus_strerror(errno) << std::endl;
+        return false;
+    }
+    
+    connected = true;
+    std::cout << "[ModbusServer] Client connected!" << std::endl;
+    return true;
 }
-void ModbusServer::acceptConnection() {
-if (!mb_ctx) return;
-std::cout << "[ModbusServer] Waiting for HMI connection..." << std::endl;
 
-if (modbus_tcp_accept(mb_ctx, &server_socket) == -1) {
-    std::cerr << "[ModbusServer] Connection accept failed" << std::endl;
-} else {
-    std::cout << "[ModbusServer] HMI connected successfully" << std::endl;
-}
-}
 void ModbusServer::closeConnection() {
-if (mb_ctx) {
-modbus_close(mb_ctx);
+    if (ctx) {
+        modbus_close(ctx);
+        connected = false;
+        std::cout << "[ModbusServer] Connection closed" << std::endl;
+    }
+    
+    if (server_socket != -1) {
+        close(server_socket);
+        server_socket = -1;
+    }
 }
+
+bool ModbusServer::isConnected() const {
+    return connected;
 }
+
+int ModbusServer::receiveQuery(uint8_t* query, int max_length) {
+    if (!ctx) {
+        return -1;
+    }
+    
+    int rc = modbus_receive(ctx, query);
+    if (rc == -1) {
+        // Connection lost
+        if (errno == ECONNRESET || errno == EPIPE || errno == EBADF) {
+            connected = false;
+        }
+    }
+    
+    return rc;
+}
+
+void ModbusServer::sendReply(const uint8_t* query, int query_length) {
+    if (!ctx || !mb_mapping) {
+        return;
+    }
+    
+    modbus_reply(ctx, query, query_length, mb_mapping);
+}
+
 uint16_t ModbusServer::readRegister(int address) {
-if (!mb_mapping || address < 0 || address >= NUM_REGISTERS) {
-return 0;
+    if (!mb_mapping || address < 0 || address >= NUM_HOLDING_REGISTERS) {
+        std::cerr << "[ModbusServer] Invalid register address: " << address << std::endl;
+        return 0;
+    }
+    
+    return mb_mapping->tab_registers[address];
 }
-return mb_mapping->tab_registers[address];
-}
+
 void ModbusServer::writeRegister(int address, uint16_t value) {
-if (!mb_mapping || address < 0 || address >= NUM_REGISTERS) {
-return;
+    if (!mb_mapping || address < 0 || address >= NUM_HOLDING_REGISTERS) {
+        std::cerr << "[ModbusServer] Invalid register address: " << address << std::endl;
+        return;
+    }
+    
+    mb_mapping->tab_registers[address] = value;
 }
-mb_mapping->tab_registers[address] = value;
+
+bool ModbusServer::readCoil(int address) {
+    if (!mb_mapping || address < 0 || address >= NUM_COILS) {
+        std::cerr << "[ModbusServer] Invalid coil address: " << address << std::endl;
+        return false;
+    }
+    
+    return mb_mapping->tab_bits[address] != 0;
 }
-void ModbusServer::writeFloat(int address, float value) {
-if (!mb_mapping || address + 1 >= NUM_REGISTERS) {
-return;
-}
-modbus_set_float_dcba(value, mb_mapping->tab_registers + address);
-}
-float ModbusServer::readFloat(int address) {
-if (!mb_mapping || address + 1 >= NUM_REGISTERS) {
-return 0.0f;
-}
-return modbus_get_float_dcba(mb_mapping->tab_registers + address);
-}
-int ModbusServer::receiveQuery(uint8_t* query, int max_size) {
-if (!mb_ctx) return -1;
-modbus_set_response_timeout(mb_ctx, MODBUS_TIMEOUT_SEC, MODBUS_TIMEOUT_USEC);
-return modbus_receive(mb_ctx, query);
-}
-void ModbusServer::sendReply(uint8_t* query, int query_size) {
-if (!mb_ctx) return;
-modbus_reply(mb_ctx, query, query_size, mb_mapping);
-}
-void ModbusServer::allocateMemory(int num_registers) {
-if (mb_mapping) {
-modbus_mapping_free(mb_mapping);
-}
-mb_mapping = modbus_mapping_new(0, 0, num_registers, 0);
-}
-void ModbusServer::resetRegisters() {
-if (!mb_mapping) return;
-for (int i = 0; i < NUM_REGISTERS; i++) {
-    mb_mapping->tab_registers[i] = 0;
-}
-}
-bool ModbusServer::isConnected() {
-return mb_ctx != nullptr;
-}
-void ModbusServer::printStatus() {
-std::cout << "\n========== MODBUS SERVER STATUS ==========" << std::endl;
-std::cout << "Context: " << (mb_ctx ? "OK" : "NONE") << std::endl;
-std::cout << "Mapping: " << (mb_mapping ? "OK" : "NONE") << std::endl;
-std::cout << "Socket: " << server_socket << std::endl;
-std::cout << "=========================================\n" << std::endl;
+
+void ModbusServer::writeCoil(int address, bool value) {
+    if (!mb_mapping || address < 0 || address >= NUM_COILS) {
+        std::cerr << "[ModbusServer] Invalid coil address: " << address << std::endl;
+        return;
+    }
+    
+    mb_mapping->tab_bits[address] = value ? 1 : 0;
 }

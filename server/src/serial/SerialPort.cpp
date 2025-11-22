@@ -131,14 +131,26 @@ std::string SerialPort::readLine() {
     }
     
     try {
-        // Check if data available (non-blocking)
-        if (serial.available() == 0) {
+        // Set non-blocking mode
+        serial.non_blocking(true);
+        
+        // Read until newline with timeout
+        boost::asio::streambuf buffer;
+        boost::system::error_code ec;
+        
+        size_t n = boost::asio::read_until(serial, buffer, '\n', ec);
+        
+        if (ec) {
+            // No data available or timeout - not an error
+            if (ec == boost::asio::error::would_block || 
+                ec == boost::asio::error::try_again ||
+                ec == boost::asio::error::operation_aborted) {
+                return "";
+            }
+            // Real error
+            std::cerr << "[SerialPort] Read error: " << ec.message() << std::endl;
             return "";
         }
-        
-        // Read until newline
-        boost::asio::streambuf buffer;
-        size_t n = boost::asio::read_until(serial, buffer, '\n');
         
         if (n > 0) {
             std::istream is(&buffer);
@@ -151,13 +163,6 @@ std::string SerialPort::readLine() {
             }
             
             return line;
-        }
-    }
-    catch (const boost::system::system_error& e) {
-        // Check if it's just "no data available" - not an error
-        if (e.code() != boost::asio::error::would_block &&
-            e.code() != boost::asio::error::try_again) {
-            std::cerr << "[SerialPort] Read error: " << e.what() << std::endl;
         }
     }
     catch (const std::exception& e) {
