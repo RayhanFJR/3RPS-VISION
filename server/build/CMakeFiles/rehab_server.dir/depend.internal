@@ -19,6 +19,14 @@ CMakeFiles/rehab_server.dir/src/modbus/ModbusServer.cpp.o
 CMakeFiles/rehab_server.dir/src/serial/SerialPort.cpp.o
  /home/han/rehabilitation-system/server/src/serial/SerialPort.cpp
  /home/han/rehabilitation-system/server/src/serial/SerialPort.h
+CMakeFiles/rehab_server.dir/src/state_machine/StateHandlers.cpp.o
+ /home/han/rehabilitation-system/server/src/modbus/DataHandler.h
+ /home/han/rehabilitation-system/server/src/modbus/ModbusServer.h
+ /home/han/rehabilitation-system/server/src/serial/SerialPort.h
+ /home/han/rehabilitation-system/server/src/state_machine/StateHandlers.cpp
+ /home/han/rehabilitation-system/server/src/state_machine/StateHandlers.h
+ /home/han/rehabilitation-system/server/src/state_machine/StateMachine.h
+ /home/han/rehabilitation-system/server/src/trajectory/TrajectoryManager.h
 CMakeFiles/rehab_server.dir/src/state_machine/StateMachine.cpp.o
  /home/han/rehabilitation-system/server/src/state_machine/StateMachine.cpp
  /home/han/rehabilitation-system/server/src/state_machine/StateMachine.h

@@ -19,6 +19,14 @@ CMakeFiles/rehab_server.dir/src/modbus/ModbusServer.cpp.o: ../src/modbus/ModbusS
 CMakeFiles/rehab_server.dir/src/serial/SerialPort.cpp.o: ../src/serial/SerialPort.cpp
 CMakeFiles/rehab_server.dir/src/serial/SerialPort.cpp.o: ../src/serial/SerialPort.h
 
+CMakeFiles/rehab_server.dir/src/state_machine/StateHandlers.cpp.o: ../src/modbus/DataHandler.h
+CMakeFiles/rehab_server.dir/src/state_machine/StateHandlers.cpp.o: ../src/modbus/ModbusServer.h
+CMakeFiles/rehab_server.dir/src/state_machine/StateHandlers.cpp.o: ../src/serial/SerialPort.h
+CMakeFiles/rehab_server.dir/src/state_machine/StateHandlers.cpp.o: ../src/state_machine/StateHandlers.cpp
+CMakeFiles/rehab_server.dir/src/state_machine/StateHandlers.cpp.o: ../src/state_machine/StateHandlers.h
+CMakeFiles/rehab_server.dir/src/state_machine/StateHandlers.cpp.o: ../src/state_machine/StateMachine.h
+CMakeFiles/rehab_server.dir/src/state_machine/StateHandlers.cpp.o: ../src/trajectory/TrajectoryManager.h
+
 CMakeFiles/rehab_server.dir/src/state_machine/StateMachine.cpp.o: ../src/state_machine/StateMachine.cpp
 CMakeFiles/rehab_server.dir/src/state_machine/StateMachine.cpp.o: ../src/state_machine/StateMachine.h
 

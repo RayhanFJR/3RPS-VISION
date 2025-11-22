@@ -3,6 +3,7 @@ file(REMOVE_RECURSE
   "CMakeFiles/rehab_server.dir/src/modbus/DataHandler.cpp.o"
   "CMakeFiles/rehab_server.dir/src/modbus/ModbusServer.cpp.o"
   "CMakeFiles/rehab_server.dir/src/serial/SerialPort.cpp.o"
+  "CMakeFiles/rehab_server.dir/src/state_machine/StateHandlers.cpp.o"
   "CMakeFiles/rehab_server.dir/src/state_machine/StateMachine.cpp.o"
   "CMakeFiles/rehab_server.dir/src/trajectory/TrajectoryManager.cpp.o"
   "rehab_server"

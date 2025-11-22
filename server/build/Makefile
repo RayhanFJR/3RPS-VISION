@@ -231,6 +231,33 @@ src/serial/SerialPort.cpp.s:
 	$(MAKE) -f CMakeFiles/rehab_server.dir/build.make CMakeFiles/rehab_server.dir/src/serial/SerialPort.cpp.s
 .PHONY : src/serial/SerialPort.cpp.s
 
+src/state_machine/StateHandlers.o: src/state_machine/StateHandlers.cpp.o
+
+.PHONY : src/state_machine/StateHandlers.o
+
+# target to build an object file
+src/state_machine/StateHandlers.cpp.o:
+	$(MAKE) -f CMakeFiles/rehab_server.dir/build.make CMakeFiles/rehab_server.dir/src/state_machine/StateHandlers.cpp.o
+.PHONY : src/state_machine/StateHandlers.cpp.o
+
+src/state_machine/StateHandlers.i: src/state_machine/StateHandlers.cpp.i
+
+.PHONY : src/state_machine/StateHandlers.i
+
+# target to preprocess a source file
+src/state_machine/StateHandlers.cpp.i:
+	$(MAKE) -f CMakeFiles/rehab_server.dir/build.make CMakeFiles/rehab_server.dir/src/state_machine/StateHandlers.cpp.i
+.PHONY : src/state_machine/StateHandlers.cpp.i
+
+src/state_machine/StateHandlers.s: src/state_machine/StateHandlers.cpp.s
+
+.PHONY : src/state_machine/StateHandlers.s
+
+# target to generate assembly for a file
+src/state_machine/StateHandlers.cpp.s:
+	$(MAKE) -f CMakeFiles/rehab_server.dir/build.make CMakeFiles/rehab_server.dir/src/state_machine/StateHandlers.cpp.s
+.PHONY : src/state_machine/StateHandlers.cpp.s
+
 src/state_machine/StateMachine.o: src/state_machine/StateMachine.cpp.o
 
 .PHONY : src/state_machine/StateMachine.o
@@ -306,6 +333,9 @@ help:
 	@echo "... src/serial/SerialPort.o"
 	@echo "... src/serial/SerialPort.i"
 	@echo "... src/serial/SerialPort.s"
+	@echo "... src/state_machine/StateHandlers.o"
+	@echo "... src/state_machine/StateHandlers.i"
+	@echo "... src/state_machine/StateHandlers.s"
 	@echo "... src/state_machine/StateMachine.o"
 	@echo "... src/state_machine/StateMachine.i"
 	@echo "... src/state_machine/StateMachine.s"
