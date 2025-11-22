@@ -1,7 +1,6 @@
 //==================================================================
 // FILE: server/src/state_machine/StateHandlers.cpp
-// Implementation of all state handlers
-// MODIFIED: Print IDLE message dengan interval 5 detik
+// FIXED VERSION: Added Arduino feedback reading, robustness improvements
 //==================================================================
 
 #include "StateHandlers.h"
@@ -12,6 +11,7 @@
 #include <iostream>
 #include <thread>
 #include <chrono>
+#include <sstream>
 
 StateHandlers::StateHandlers(ModbusServer* modbus,
                             DataHandler* data_handler,
@@ -21,7 +21,75 @@ StateHandlers::StateHandlers(ModbusServer* modbus,
       data_handler(data_handler),
       trajectory_manager(traj_mgr),
       serial_port(serial),
-      last_idle_print(std::chrono::steady_clock::now()) {  // Initialize
+      last_idle_print(std::chrono::steady_clock::now()),
+      last_feedback_read(std::chrono::steady_clock::now()) {
+}
+
+// ========== ARDUINO FEEDBACK READER (DIPANGGIL SETIAP LOOP) ==========
+void StateHandlers::readArduinoFeedback() {
+    // Baca feedback setiap 50ms untuk menghindari buffer overflow
+    auto now = std::chrono::steady_clock::now();
+    if (std::chrono::duration_cast<std::chrono::milliseconds>(
+        now - last_feedback_read).count() >= 50) {
+        
+        std::string feedback = serial_port->readLine();
+        
+        if (!feedback.empty()) {
+            parseArduinoFeedback(feedback);
+        }
+        
+        last_feedback_read = now;
+    }
+}
+
+// ========== PARSER UNTUK DATA DARI ARDUINO ==========
+void StateHandlers::parseArduinoFeedback(const std::string& feedback) {
+    // Format expected from Arduino:
+    // "LC1:12.34,LC2:56.78,LC3:90.12,STATE:RUNNING"
+    // or "LC:12.34,56.78,90.12"
+    
+    std::istringstream iss(feedback);
+    std::string token;
+    
+    try {
+        while (std::getline(iss, token, ',')) {
+            size_t colon_pos = token.find(':');
+            if (colon_pos != std::string::npos) {
+                std::string key = token.substr(0, colon_pos);
+                std::string value = token.substr(colon_pos + 1);
+                
+                // Parse loadcell values
+                if (key == "LC1") {
+                    float lc1 = std::stof(value);
+                    modbus_server->writeRegister(ModbusAddr::LOADCELL_1, 
+                                                static_cast<uint16_t>(lc1 * 100)); // Kirim dalam 0.01 unit
+                    std::cout << "[Arduino] LC1: " << lc1 << " N" << std::endl;
+                }
+                else if (key == "LC2") {
+                    float lc2 = std::stof(value);
+                    modbus_server->writeRegister(ModbusAddr::LOADCELL_2, 
+                                                static_cast<uint16_t>(lc2 * 100));
+                    std::cout << "[Arduino] LC2: " << lc2 << " N" << std::endl;
+                }
+                else if (key == "LC3") {
+                    float lc3 = std::stof(value);
+                    modbus_server->writeRegister(ModbusAddr::LOADCELL_3, 
+                                                static_cast<uint16_t>(lc3 * 100));
+                    std::cout << "[Arduino] LC3: " << lc3 << " N" << std::endl;
+                }
+                else if (key == "STATE") {
+                    arduino_state = value;
+                    std::cout << "[Arduino] State: " << value << std::endl;
+                }
+                else if (key == "ERROR") {
+                    std::cerr << "[Arduino] ERROR: " << value << std::endl;
+                }
+            }
+        }
+    }
+    catch (const std::exception& e) {
+        std::cerr << "[Arduino] Parse error: " << e.what() << std::endl;
+    }
 }
 
 // ============ STATE 1: IDLE ============
@@ -30,7 +98,10 @@ void StateHandlers::handleIdle(StateMachine& state_machine,
                               int& t_controller,
                               int& t_grafik) {
     
-    // Print IDLE message hanya setiap 5 detik (bukan setiap loop)
+    // READ ARDUINO FEEDBACK (PENTING!)
+    readArduinoFeedback();
+    
+    // Print IDLE message hanya setiap 5 detik
     auto now = std::chrono::steady_clock::now();
     if (std::chrono::duration_cast<std::chrono::seconds>(
         now - last_idle_print).count() >= 5) {
@@ -71,17 +142,15 @@ void StateHandlers::handleIdle(StateMachine& state_machine,
         data_handler->clearAnimationData();
     }
     
-    // Check for START button (begin rehabilitation)
+    // Check for START button
     if (data_handler->isButtonPressed(ModbusAddr::START)) {
         std::cout << "[State] START button pressed - Beginning rehabilitation" << std::endl;
         data_handler->clearButton(ModbusAddr::START);
         
-        // Get number of cycles from HMI
         int num_cycles = modbus_server->readRegister(ModbusAddr::JUMLAH_CYCLE);
         if (num_cycles < 1) num_cycles = 1;
-        if (num_cycles > 10) num_cycles = 10;  // Limit to 10 cycles max
+        if (num_cycles > 10) num_cycles = 10;
         
-        // Start rehabilitation cycle
         state_machine.startRehabCycle(num_cycles);
         std::cout << "[State] Transitioning to AUTO_REHAB" << std::endl;
         state_machine.setState(SystemState::AUTO_REHAB);
@@ -90,7 +159,7 @@ void StateHandlers::handleIdle(StateMachine& state_machine,
         t_grafik = trajectory_manager->getGraphStartIndex();
     }
     
-    // Check for emergency stop (even in IDLE)
+    // Check for emergency stop
     if (data_handler->isButtonPressed(ModbusAddr::EMERGENCY)) {
         std::cout << "[State] EMERGENCY button pressed!" << std::endl;
         data_handler->clearButton(ModbusAddr::EMERGENCY);
@@ -108,6 +177,9 @@ void StateHandlers::handleAutoRehab(StateMachine& state_machine,
                                    bool& animasi_grafik_berjalan,
                                    std::string& arduino_feedback_state) {
     
+    // READ ARDUINO FEEDBACK (PENTING!)
+    readArduinoFeedback();
+    
     auto current_time = std::chrono::steady_clock::now();
     
     int gait_start = trajectory_manager->getGaitStartIndex();
@@ -115,39 +187,65 @@ void StateHandlers::handleAutoRehab(StateMachine& state_machine,
     int graph_start = trajectory_manager->getGraphStartIndex();
     int graph_end = trajectory_manager->getGraphEndIndex();
     
+    // ========== WATCHDOG: Cek timeout ==========
+    static auto rehab_start_time = std::chrono::steady_clock::now();
+    if (t_controller == 0) {
+        rehab_start_time = current_time; // Reset di awal
+    }
+    
+    // Timeout 60 detik (safety)
+    if (std::chrono::duration_cast<std::chrono::seconds>(
+        current_time - rehab_start_time).count() > 60) {
+        
+        std::cerr << "\n[AUTO_REHAB] TIMEOUT! Forcing stop" << std::endl;
+        serial_port->sendManualCommand('0');
+        state_machine.setState(SystemState::IDLE);
+        return;
+    }
+    
     // ========== CONTROLLER INTERVAL (100ms) ==========
     if (std::chrono::duration_cast<std::chrono::milliseconds>(
         current_time - last_controller_time).count() >= CONTROLLER_INTERVAL_MS) {
         
-        // Check if within valid range
         if (t_controller < (gait_end - gait_start)) {
-            // Map controller index to actual trajectory index
             int actual_index = gait_start + t_controller;
             
-            // Send trajectory point to Arduino
             TrajectoryPoint point = trajectory_manager->getPoint(actual_index);
-            serial_port->sendControlData(
+            
+            // Kirim ke Arduino dengan error handling
+            bool send_success = serial_port->sendControlData(
                 point.pos1, point.pos2, point.pos3,
                 point.velo1, point.velo2, point.velo3,
                 point.fc1, point.fc2, point.fc3
             );
             
-            // Increment for next point
+            if (!send_success) {
+                std::cerr << "[AUTO_REHAB] Failed to send data to Arduino!" << std::endl;
+                // Bisa tambahkan retry logic atau emergency stop
+            }
+            
             t_controller++;
             
-            std::cout << "[AUTO_REHAB] Point " << t_controller 
-                     << "/" << (gait_end - gait_start) << std::endl;
+            // Print setiap 10 points untuk mengurangi spam
+            if (t_controller % 10 == 0) {
+                std::cout << "[AUTO_REHAB] Point " << t_controller 
+                         << "/" << (gait_end - gait_start) << std::endl;
+            }
         } 
         else {
             // Trajectory complete
             std::cout << "\n[AUTO_REHAB] Trajectory complete" << std::endl;
-            serial_port->sendManualCommand('0');  // Stop motors
+            serial_port->sendManualCommand('0');
+            
+            // Update HMI cycle counter
+            modbus_server->writeRegister(ModbusAddr::CYCLE_COUNTER, 
+                                        state_machine.getCurrentCycle());
             
             // Transition to POST_REHAB_DELAY
             state_machine.setState(SystemState::POST_REHAB_DELAY);
             state_machine.startDelayTimer();
             
-            return;  // Don't update animation below
+            return;
         }
         
         last_controller_time = current_time;
@@ -189,33 +287,43 @@ void StateHandlers::handleAutoRetreat(StateMachine& state_machine,
                                      std::string& arduino_feedback_state,
                                      std::chrono::steady_clock::time_point& last_retreat_time) {
     
-    std::cout << "\n[AUTO_RETREAT] Executing retreat sequence" << std::endl;
+    // READ ARDUINO FEEDBACK
+    readArduinoFeedback();
+    
+    static auto retreat_start = std::chrono::steady_clock::now();
+    static bool retreat_initialized = false;
+    
+    // Initialize retreat
+    if (!retreat_initialized) {
+        std::cout << "\n[AUTO_RETREAT] Executing retreat sequence" << std::endl;
+        retreat_start = std::chrono::steady_clock::now();
+        retreat_initialized = true;
+    }
     
     auto current_time = std::chrono::steady_clock::now();
     
-    // ========== SEND RETREAT COMMANDS ==========
+    // Send retreat command periodically
     if (std::chrono::duration_cast<std::chrono::milliseconds>(
         current_time - last_retreat_time).count() >= CONTROLLER_INTERVAL_MS) {
         
-        // For now, simple retreat: just go backward
         serial.sendManualCommand('2');  // Backward
-        
         last_retreat_time = current_time;
     }
     
-    // ========== WAIT FOR RETREAT COMPLETE ==========
-    // In real implementation, would track retreat progress
-    // For now, wait 3 seconds and return to idle
-    static auto retreat_start = std::chrono::steady_clock::now();
+    // Timeout after 5 seconds
+    auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
+        current_time - retreat_start).count();
     
-    if (std::chrono::duration_cast<std::chrono::seconds>(
-        current_time - retreat_start).count() > 3) {
-        
+    if (elapsed > 5) {
         std::cout << "[AUTO_RETREAT] Retreat complete" << std::endl;
         serial.sendManualCommand('0');  // Stop
         
         state_machine.setState(SystemState::IDLE);
-        retreat_start = std::chrono::steady_clock::now();
+        retreat_initialized = false;  // Reset untuk next time
+    }
+    else {
+        std::cout << "[AUTO_RETREAT] Retreating... " << (5 - elapsed) << "s\r";
+        std::cout.flush();
     }
 }
 
@@ -226,6 +334,9 @@ void StateHandlers::handlePostRehabDelay(StateMachine& state_machine,
                                         int& t_grafik,
                                         bool& animasi_grafik_berjalan,
                                         std::chrono::steady_clock::time_point& delay_start_time) {
+    
+    // READ ARDUINO FEEDBACK (biar loadcell tetap update)
+    readArduinoFeedback();
     
     // Check if delay expired
     if (state_machine.isDelayTimerExpired(POST_REHAB_DELAY_SEC)) {
@@ -245,6 +356,10 @@ void StateHandlers::handlePostRehabDelay(StateMachine& state_machine,
             animasi_grafik_berjalan = true;
             data_handler->clearAnimationData();
             
+            // Update HMI
+            modbus_server->writeRegister(ModbusAddr::CYCLE_COUNTER, 
+                                        state_machine.getCurrentCycle());
+            
             // Go back to AUTO_REHAB
             state_machine.setState(SystemState::AUTO_REHAB);
         } 
@@ -253,17 +368,20 @@ void StateHandlers::handlePostRehabDelay(StateMachine& state_machine,
             std::cout << "\n[POST_REHAB_DELAY] All cycles complete!" << std::endl;
             std::cout << "Total cycles executed: " << state_machine.getTargetCycle() << std::endl;
             
+            // Update HMI - show completion
+            modbus_server->writeRegister(ModbusAddr::CYCLE_COMPLETE, 1);
+            
             // Return to IDLE
             state_machine.setState(SystemState::IDLE);
         }
     } 
     else {
         // Show remaining time
-        int remaining = POST_REHAB_DELAY_SEC - 
-            std::chrono::duration_cast<std::chrono::seconds>(
-                std::chrono::steady_clock::now() - delay_start_time).count();
+        int elapsed = std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::steady_clock::now() - delay_start_time).count();
+        int remaining = POST_REHAB_DELAY_SEC - elapsed;
         
-        if (remaining > 0) {
+        if (remaining > 0 && elapsed % 1 == 0) {  // Print setiap detik
             std::cout << "[POST_REHAB_DELAY] Waiting... " << remaining << "s remaining\r";
             std::cout.flush();
         }
@@ -276,26 +394,33 @@ void StateHandlers::handleEmergencyStop(StateMachine& state_machine,
                                        SerialPort& serial,
                                        bool& animasi_grafik_berjalan) {
     
-    std::cout << "\n[EMERGENCY_STOP] System in EMERGENCY STOP mode" << std::endl;
-    std::cout << "[EMERGENCY_STOP] All motors stopped" << std::endl;
-    std::cout << "[EMERGENCY_STOP] Waiting for RESET command..." << std::endl;
+    // READ ARDUINO FEEDBACK
+    readArduinoFeedback();
+    
+    static bool emergency_logged = false;
+    
+    if (!emergency_logged) {
+        std::cout << "\n[EMERGENCY_STOP] System in EMERGENCY STOP mode" << std::endl;
+        std::cout << "[EMERGENCY_STOP] All motors stopped" << std::endl;
+        std::cout << "[EMERGENCY_STOP] Waiting for RESET command..." << std::endl;
+        emergency_logged = true;
+    }
     
     // Clear animation
     animasi_grafik_berjalan = false;
     
-    // Display message to HMI
-    // (This would be done via Modbus registers in real implementation)
+    // Update HMI status
+    modbus_server->writeRegister(ModbusAddr::SYSTEM_STATUS, 0xFF);  // Emergency code
     
     // Wait for RESET button
     if (data_handler->isButtonPressed(ModbusAddr::RESET)) {
         std::cout << "\n[EMERGENCY_STOP] RESET button pressed" << std::endl;
         data_handler->clearButton(ModbusAddr::RESET);
         
-        // Send reset to Arduino
         serial.sendCommand("R");
         
-        // Transition to RESETTING
         state_machine.setState(SystemState::RESETTING);
+        emergency_logged = false;  // Reset flag
     }
 }
 
@@ -305,26 +430,38 @@ void StateHandlers::handleResetting(StateMachine& state_machine,
                                    SerialPort& serial,
                                    bool& animasi_grafik_berjalan) {
     
-    std::cout << "\n[RESETTING] System resetting..." << std::endl;
+    // READ ARDUINO FEEDBACK
+    readArduinoFeedback();
     
-    // Send calibration/reset command to Arduino
-    serial.sendCalibrate();
+    static auto reset_start_time = std::chrono::steady_clock::now();
+    static bool reset_initialized = false;
     
-    // Wait a bit for Arduino to reset
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    if (!reset_initialized) {
+        std::cout << "\n[RESETTING] System resetting..." << std::endl;
+        serial.sendCalibrate();
+        reset_start_time = std::chrono::steady_clock::now();
+        reset_initialized = true;
+    }
     
     // Clear animation
     animasi_grafik_berjalan = false;
     data_handler->clearAnimationData();
     
-    // Check if reset is complete
-    if (data_handler->isButtonPressed(ModbusAddr::CALIBRATE)) {
-        std::cout << "[RESETTING] Calibration complete" << std::endl;
-        data_handler->clearButton(ModbusAddr::CALIBRATE);
+    // Wait untuk Arduino reset (max 5 detik)
+    auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::steady_clock::now() - reset_start_time).count();
+    
+    if (elapsed >= 3 || arduino_state == "READY") {
+        std::cout << "[RESETTING] System ready - returning to IDLE" << std::endl;
+        
+        // Clear HMI status
+        modbus_server->writeRegister(ModbusAddr::SYSTEM_STATUS, 0x00);
+        
+        state_machine.setState(SystemState::IDLE);
+        reset_initialized = false;  // Reset flag
     }
-    
-    std::cout << "[RESETTING] System ready - returning to IDLE" << std::endl;
-    
-    // Return to IDLE
-    state_machine.setState(SystemState::IDLE);
+    else {
+        std::cout << "[RESETTING] Waiting for Arduino... " << (3 - elapsed) << "s\r";
+        std::cout.flush();
+    }
 }

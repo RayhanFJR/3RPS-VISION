@@ -1,219 +1,203 @@
 //==================================================================
-// FILE : server/src/serial/SerialPort.cpp
+// FILE: server/src/serial/SerialPort.cpp
+// UPDATED: Added non-blocking read functionality
 //==================================================================
 
 #include "SerialPort.h"
 #include <iostream>
 #include <sstream>
-#include <algorithm>
-#include <sys/ioctl.h>      // <-- penting untuk FIONREAD
-#include <unistd.h>
 
-SerialPort::SerialPort(io_context& io_ctx)
-    : serial(io_ctx), port_name("") {}
+SerialPort::SerialPort(boost::asio::io_context& io_ctx)
+    : io_context(io_ctx),
+      serial(io_ctx),
+      is_open(false) {
+}
 
 SerialPort::~SerialPort() {
     close();
 }
 
 bool SerialPort::open(const std::string& port, unsigned int baud_rate) {
-    port_name = port;
-
     try {
         serial.open(port);
         serial.set_option(boost::asio::serial_port_base::baud_rate(baud_rate));
         serial.set_option(boost::asio::serial_port_base::character_size(8));
-        serial.set_option(boost::asio::serial_port_base::stop_bits(
-            boost::asio::serial_port_base::stop_bits::one));
         serial.set_option(boost::asio::serial_port_base::parity(
             boost::asio::serial_port_base::parity::none));
-
-        std::cout << "[SerialPort] Opened " << port << " @ " << baud_rate << " baud\n";
+        serial.set_option(boost::asio::serial_port_base::stop_bits(
+            boost::asio::serial_port_base::stop_bits::one));
+        
+        is_open = true;
+        
+        std::cout << "[SerialPort] Opened " << port 
+                  << " at " << baud_rate << " baud" << std::endl;
+        
         return true;
-    } catch (const std::exception& e) {
-        std::cerr << "[SerialPort] Error opening port: " << e.what() << std::endl;
+    }
+    catch (const std::exception& e) {
+        std::cerr << "[SerialPort] Failed to open: " << e.what() << std::endl;
+        is_open = false;
         return false;
     }
 }
 
 void SerialPort::close() {
-    if (serial.is_open()) {
+    if (is_open && serial.is_open()) {
         try {
             serial.close();
-            std::cout << "[SerialPort] Port closed\n";
-        } catch (const std::exception& e) {
-            std::cerr << "[SerialPort] Error closing port: " << e.what() << std::endl;
+            is_open = false;
+            std::cout << "[SerialPort] Closed" << std::endl;
+        }
+        catch (const std::exception& e) {
+            std::cerr << "[SerialPort] Error closing: " << e.what() << std::endl;
         }
     }
 }
 
-bool SerialPort::isOpen() {
-    return serial.is_open();
+bool SerialPort::isOpen() const {
+    return is_open && serial.is_open();
 }
 
-void SerialPort::sendCommand(const std::string& cmd) {
-    if (!serial.is_open()) return;
+// ========== WRITE FUNCTIONS ==========
 
+bool SerialPort::sendCommand(const std::string& cmd) {
+    if (!isOpen()) {
+        std::cerr << "[SerialPort] Cannot send - port closed" << std::endl;
+        return false;
+    }
+    
     try {
-        std::string message = cmd + "\n";
-        boost::asio::write(serial, boost::asio::buffer(message));
-    } catch (const std::exception& e) {
-        std::cerr << "[SerialPort] Send error: " << e.what() << std::endl;
+        std::string full_cmd = cmd + "\n";
+        boost::asio::write(serial, boost::asio::buffer(full_cmd));
+        return true;
+    }
+    catch (const std::exception& e) {
+        std::cerr << "[SerialPort] Write error: " << e.what() << std::endl;
+        return false;
     }
 }
 
-void SerialPort::sendControlData(float pos1, float pos2, float pos3,
-                                 float velo1, float velo2, float velo3,
+bool SerialPort::sendControlData(float pos1, float pos2, float pos3,
+                                 float vel1, float vel2, float vel3,
                                  float fc1, float fc2, float fc3) {
-    std::stringstream ss;
-    ss << "S"
-       << pos1 << "," << pos2 << "," << pos3 << ","
-       << velo1 << "," << velo2 << "," << velo3 << ","
-       << fc1 << "," << fc2 << "," << fc3;
-
-    sendCommand(ss.str());
-}
-
-void SerialPort::sendThresholds(int threshold1, int threshold2) {
-    std::stringstream ss;
-    ss << "T" << threshold1 << "," << threshold2;
-    sendCommand(ss.str());
-}
-
-void SerialPort::sendCalibrate() {
-    sendCommand("X");
-}
-
-void SerialPort::sendEmergencyStop() {
-    sendCommand("E");
-}
-
-void SerialPort::sendManualCommand(char direction) {
-    std::string cmd = "";
-    cmd += direction;
-    sendCommand(cmd);
-}
-
-
-//======================================================
-// FIX: Replace serial.available() with ioctl(FIONREAD)
-//======================================================
-static int getBytesAvailable(boost::asio::serial_port &serial)
-{
-    int bytes = 0;
-    int fd = serial.native_handle();
-    if (ioctl(fd, FIONREAD, &bytes) < 0) {
-        return 0;
+    if (!isOpen()) return false;
+    
+    try {
+        std::ostringstream oss;
+        oss << "C," 
+            << pos1 << "," << pos2 << "," << pos3 << ","
+            << vel1 << "," << vel2 << "," << vel3 << ","
+            << fc1 << "," << fc2 << "," << fc3 << "\n";
+        
+        std::string data = oss.str();
+        boost::asio::write(serial, boost::asio::buffer(data));
+        return true;
     }
-    return bytes;
+    catch (const std::exception& e) {
+        std::cerr << "[SerialPort] Control write error: " << e.what() << std::endl;
+        return false;
+    }
 }
 
-bool SerialPort::hasData() {
-    if (!serial.is_open()) return false;
-    return getBytesAvailable(serial) > 0;
+bool SerialPort::sendManualCommand(char direction) {
+    if (!isOpen()) return false;
+    
+    std::string cmd;
+    switch (direction) {
+        case '0': cmd = "M0\n"; break;  // Stop
+        case '1': cmd = "M1\n"; break;  // Forward
+        case '2': cmd = "M2\n"; break;  // Backward
+        default:
+            std::cerr << "[SerialPort] Invalid manual command: " << direction << std::endl;
+            return false;
+    }
+    
+    return sendCommand(cmd);
 }
 
+bool SerialPort::sendCalibrate() {
+    return sendCommand("CAL");
+}
 
-//======================================================
-// readLine() — NONBLOCKING, using FIONREAD
-//======================================================
+bool SerialPort::sendEmergencyStop() {
+    return sendCommand("ESTOP");
+}
+
+// ========== READ FUNCTIONS (NEW!) ==========
+
 std::string SerialPort::readLine() {
-    if (!serial.is_open()) return "";
-
-    std::string line = "";
-    char c;
-    boost::system::error_code ec;
-
-    while (getBytesAvailable(serial) > 0) {
-        boost::asio::read(serial, boost::asio::buffer(&c, 1), ec);
-
-        if (ec) {
-            std::cerr << "[SerialPort] Read error: " << ec.message() << std::endl;
+    if (!isOpen()) {
+        return "";
+    }
+    
+    try {
+        // Check if data available (non-blocking)
+        if (serial.available() == 0) {
             return "";
         }
-
-        if (c == '\n' || c == '\r') {
-            if (!line.empty())
-                return line;
-        } else if (c >= 32 && c <= 126) {
-            line += c;
+        
+        // Read until newline
+        boost::asio::streambuf buffer;
+        size_t n = boost::asio::read_until(serial, buffer, '\n');
+        
+        if (n > 0) {
+            std::istream is(&buffer);
+            std::string line;
+            std::getline(is, line);
+            
+            // Remove carriage return if present
+            if (!line.empty() && line.back() == '\r') {
+                line.pop_back();
+            }
+            
+            return line;
         }
     }
+    catch (const boost::system::system_error& e) {
+        // Check if it's just "no data available" - not an error
+        if (e.code() != boost::asio::error::would_block &&
+            e.code() != boost::asio::error::try_again) {
+            std::cerr << "[SerialPort] Read error: " << e.what() << std::endl;
+        }
+    }
+    catch (const std::exception& e) {
+        std::cerr << "[SerialPort] Read error: " << e.what() << std::endl;
+    }
+    
     return "";
 }
 
-
-//======================================================
-// readUntilChar(delimiter)
-//======================================================
-std::string SerialPort::readUntilChar(char delimiter) {
-    if (!serial.is_open()) return "";
-
-    std::string data = "";
-    char c;
-    boost::system::error_code ec;
-
-    while (getBytesAvailable(serial) > 0) {
-        boost::asio::read(serial, boost::asio::buffer(&c, 1), ec);
-
-        if (ec) return data;
-        if (c == delimiter) return data;
-
-        data += c;
+std::string SerialPort::readAvailable() {
+    if (!isOpen()) {
+        return "";
     }
-
-    return data;
-}
-
-
-//======================================================
-// STATUS PARSER
-//======================================================
-SerialPort::ArduinoStatus SerialPort::parseStatusMessage(const std::string& msg) {
-    ArduinoStatus status;
-    status.status = "unknown";
-    status.mode = "unknown";
-    status.load = 0.0;
-    status.scale = 1.0;
-    status.pos1 = status.pos2 = status.pos3 = 0.0;
-
-    size_t pos = msg.find("status:");
-    if (pos != std::string::npos) {
-        size_t end = msg.find(',', pos);
-        status.status = msg.substr(pos + 7, end - pos - 7);
+    
+    try {
+        if (serial.available() == 0) {
+            return "";
+        }
+        
+        // Read all available data
+        boost::asio::streambuf buffer;
+        size_t n = boost::asio::read(serial, buffer, 
+                                    boost::asio::transfer_at_least(1));
+        
+        if (n > 0) {
+            std::istream is(&buffer);
+            std::string data;
+            std::getline(is, data, '\0');  // Read until null or end
+            return data;
+        }
     }
-
-    pos = msg.find("mode:");
-    if (pos != std::string::npos) {
-        size_t end = msg.find(',', pos);
-        status.mode = msg.substr(pos + 5, end - pos - 5);
+    catch (const boost::system::system_error& e) {
+        if (e.code() != boost::asio::error::would_block &&
+            e.code() != boost::asio::error::try_again) {
+            std::cerr << "[SerialPort] Read error: " << e.what() << std::endl;
+        }
     }
-
-    pos = msg.find("load:");
-    if (pos != std::string::npos) {
-        status.load = std::stof(msg.substr(pos + 5));
+    catch (const std::exception& e) {
+        std::cerr << "[SerialPort] Read error: " << e.what() << std::endl;
     }
-
-    pos = msg.find("scale:");
-    if (pos != std::string::npos) {
-        status.scale = std::stof(msg.substr(pos + 6));
-    }
-
-    pos = msg.find("pos:");
-    if (pos != std::string::npos) {
-        std::string pos_str = msg.substr(pos + 4);
-        size_t c1 = pos_str.find(',');
-        size_t c2 = pos_str.find(',', c1 + 1);
-
-        status.pos1 = std::stof(pos_str.substr(0, c1));
-        status.pos2 = std::stof(pos_str.substr(c1 + 1, c2 - c1 - 1));
-        status.pos3 = std::stof(pos_str.substr(c2 + 1));
-    }
-
-    return status;
-}
-
-void SerialPort::printPort() {
-    std::cout << "[SerialPort] Port: " << port_name
-              << " | Status: " << (isOpen() ? "OPEN" : "CLOSED") << std::endl;
+    
+    return "";
 }
