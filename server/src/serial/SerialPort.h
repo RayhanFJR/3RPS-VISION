@@ -32,6 +32,12 @@ public:
     std::string readLine();        // Read until newline (non-blocking)
     std::string readAvailable();   // Read all available data (non-blocking)
 
+    void send(const std::string& msg);
+
+    void SerialPort::send(const std::string& msg) {
+    write(msg + "\n");
+    }
+    
 private:
     boost::asio::io_context& io_context;
     boost::asio::serial_port serial;

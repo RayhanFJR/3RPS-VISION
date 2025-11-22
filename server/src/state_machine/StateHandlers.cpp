@@ -21,14 +21,16 @@ StateHandlers::StateHandlers(
     last_feedback_read = std::chrono::steady_clock::now();
 }
 
-//================= STATE HANDLERS =================//
 
+//==================================================
+// IDLE STATE
+//==================================================
 void StateHandlers::handleIdle(
     StateMachine& sm,
     int& t_controller,
     int& t_grafik
 ){
-    // 1. Handle manual button
+    // -------- Manual Commands --------
     if (data_handler->isButtonPressed(ModbusAddr::MANUAL_MAJU)) {
         serial_port->send("1");
         data_handler->clearButton(ModbusAddr::MANUAL_MAJU);
@@ -42,28 +44,27 @@ void StateHandlers::handleIdle(
         data_handler->clearButton(ModbusAddr::MANUAL_STOP);
     }
 
-    // 2. Cek tombol trajektori
+    // -------- Select Trajectory --------
     int traj = data_handler->checkTrajectorySelection();
     if (traj > 0) {
         trajectory_manager->switchTrajectory(traj);
         data_handler->loadTrajectoryToHMI(traj);
     }
 
-    // 3. Calibration
+    // -------- Calibration --------
     if (data_handler->isButtonPressed(ModbusAddr::CALIBRATE)) {
         serial_port->send("X");
         data_handler->setGraphCommand(2);
         data_handler->clearButton(ModbusAddr::CALIBRATE);
     }
 
-    // 4. START → masuk AUTO_REHAB
+    // -------- START REHAB --------
     if (data_handler->isButtonPressed(ModbusAddr::START)) {
-        
+
         sm.startRehabCycle(
-            data_handler->readRegister(ModbusAddr::JUMLAH_CYCLE)
+            modbus_server->readRegister(ModbusAddr::JUMLAH_CYCLE)
         );
 
-        // Reset counters
         t_controller = 0;
         t_grafik = trajectory_manager->getGraphStartIndex();
 
@@ -74,32 +75,36 @@ void StateHandlers::handleIdle(
 }
 
 
+
+//==================================================
+// AUTO REHAB
+//==================================================
 void StateHandlers::handleAutoRehab(
     StateMachine& sm,
     int& t_controller,
     int& t_grafik,
     std::chrono::steady_clock::time_point& last_controller_time,
-    bool& animasi,
+    bool& anim,
     std::string& arduino_state
 ){
     auto now = std::chrono::steady_clock::now();
 
-    // Kirim data controller tiap 100 ms
+    // ------------------------------------------------
+    // Controller Output Every 100ms
+    // ------------------------------------------------
     if (now - last_controller_time >= std::chrono::milliseconds(CONTROLLER_INTERVAL_MS)) {
 
         int gaitStart = trajectory_manager->getGaitStartIndex();
         int gaitEnd   = trajectory_manager->getGaitEndIndex();
 
-        // Sudah selesai semua titik → masuk POST_REHAB
         if (t_controller >= (gaitEnd - gaitStart)) {
             sm.startDelayTimer();
             sm.setState(SystemState::POST_REHAB_DELAY);
             return;
         }
 
-        int actual_index = gaitStart + t_controller;
-
-        auto p = trajectory_manager->getPoint(actual_index);
+        int real_index = gaitStart + t_controller;
+        auto p = trajectory_manager->getPoint(real_index);
 
         serial_port->send(
             "S" +
@@ -118,8 +123,11 @@ void StateHandlers::handleAutoRehab(
         last_controller_time = now;
     }
 
-    // Update grafik berjalan
-    if (animasi && t_grafik < trajectory_manager->getGraphEndIndex()) {
+    // ------------------------------------------------
+    - GRAPH UPDATES
+    // ------------------------------------------------
+    if (anim && t_grafik < trajectory_manager->getGraphEndIndex()) {
+
         auto gx = trajectory_manager->getGraphDataX();
         auto gy = trajectory_manager->getGraphDataY();
 
@@ -130,19 +138,25 @@ void StateHandlers::handleAutoRehab(
         );
 
         data_handler->setGraphCommand(3);
-
         t_grafik++;
     }
 
-    // Cek apakah Arduino minta retreat
+    // ------------------------------------------------
+    // Arduino RETREAT feedback
+    // ------------------------------------------------
     readArduinoFeedback();
     if (isRetreatTriggered()) {
-        sm.setState(SystemState::AUTO_RETREAT);
         clearRetreatTrigger();
+        sm.setState(SystemState::AUTO_RETREAT);
+        return;
     }
 }
 
 
+
+//==================================================
+// AUTO RETREAT
+//==================================================
 void StateHandlers::handleAutoRetreat(
     StateMachine& sm,
     SerialPort& serial,
@@ -157,7 +171,7 @@ void StateHandlers::handleAutoRetreat(
     if (!retreat_active) {
         retreat_index = sm.getTrajectoryIndex() - 1;
         retreat_active = true;
-        std::cout << "RETREAT STARTED\n";
+        std::cout << "[RETREAT] BEGIN\n";
     }
 
     if (retreat_active && now - last_time >= std::chrono::milliseconds(100)) {
@@ -182,7 +196,7 @@ void StateHandlers::handleAutoRetreat(
         last_time = now;
     }
 
-    // User menekan RESET → masuk state RESETTING
+    // RESET → Move to RESETTING
     if (data_handler->isButtonPressed(ModbusAddr::RESET)) {
         serial.send("R");
         data_handler->clearButton(ModbusAddr::RESET);
@@ -191,6 +205,10 @@ void StateHandlers::handleAutoRetreat(
 }
 
 
+
+//==================================================
+// POST REHAB DELAY
+//==================================================
 void StateHandlers::handlePostRehabDelay(
     StateMachine& sm,
     int& t_controller,
@@ -201,10 +219,8 @@ void StateHandlers::handlePostRehabDelay(
     if (sm.isDelayTimerExpired(POST_REHAB_DELAY_SEC)) {
 
         if (sm.hasCycleRemaining()) {
-
             sm.incrementCycle();
 
-            // Reset untuk cycle berikutnya
             t_controller = 0;
             t_graph = trajectory_manager->getGraphStartIndex();
             anim = true;
@@ -212,7 +228,6 @@ void StateHandlers::handlePostRehabDelay(
             sm.setState(SystemState::AUTO_REHAB);
         }
         else {
-            // Semua selesai
             serial_port->send("0");
             sm.setState(SystemState::IDLE);
         }
@@ -220,6 +235,10 @@ void StateHandlers::handlePostRehabDelay(
 }
 
 
+
+//==================================================
+// EMERGENCY STOP
+//==================================================
 void StateHandlers::handleEmergencyStop(
     StateMachine& sm,
     SerialPort& serial,
@@ -236,6 +255,10 @@ void StateHandlers::handleEmergencyStop(
 }
 
 
+
+//==================================================
+// RESETTING
+//==================================================
 void StateHandlers::handleResetting(
     StateMachine& sm,
     SerialPort& serial,
@@ -248,13 +271,14 @@ void StateHandlers::handleResetting(
 }
 
 
-//================= ARDUINO FEEDBACK =================//
 
+//==================================================
+// ARDUINO FEEDBACK
+//==================================================
 void StateHandlers::readArduinoFeedback() {
     if (!serial_port) return;
 
     std::string data = serial_port->readLine();
-
     if (!data.empty()) {
         parseArduinoFeedback(data);
     }
