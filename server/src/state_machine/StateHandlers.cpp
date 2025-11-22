@@ -24,58 +24,229 @@ StateHandlers::StateHandlers(
 //================= STATE HANDLERS =================//
 
 void StateHandlers::handleIdle(
-    StateMachine& state_machine,
+    StateMachine& sm,
     int& t_controller,
     int& t_grafik
-) {
-    // TODO: Implement idle logic
+){
+    // 1. Handle manual button
+    if (data_handler->isButtonPressed(ModbusAddr::MANUAL_MAJU)) {
+        serial_port->send("1");
+        data_handler->clearButton(ModbusAddr::MANUAL_MAJU);
+    }
+    if (data_handler->isButtonPressed(ModbusAddr::MANUAL_MUNDUR)) {
+        serial_port->send("2");
+        data_handler->clearButton(ModbusAddr::MANUAL_MUNDUR);
+    }
+    if (data_handler->isButtonPressed(ModbusAddr::MANUAL_STOP)) {
+        serial_port->send("0");
+        data_handler->clearButton(ModbusAddr::MANUAL_STOP);
+    }
+
+    // 2. Cek tombol trajektori
+    int traj = data_handler->checkTrajectorySelection();
+    if (traj > 0) {
+        trajectory_manager->switchTrajectory(traj);
+        data_handler->loadTrajectoryToHMI(traj);
+    }
+
+    // 3. Calibration
+    if (data_handler->isButtonPressed(ModbusAddr::CALIBRATE)) {
+        serial_port->send("X");
+        data_handler->setGraphCommand(2);
+        data_handler->clearButton(ModbusAddr::CALIBRATE);
+    }
+
+    // 4. START → masuk AUTO_REHAB
+    if (data_handler->isButtonPressed(ModbusAddr::START)) {
+        
+        sm.startRehabCycle(
+            data_handler->readRegister(ModbusAddr::JUMLAH_CYCLE)
+        );
+
+        // Reset counters
+        t_controller = 0;
+        t_grafik = trajectory_manager->getGraphStartIndex();
+
+        data_handler->clearButton(ModbusAddr::START);
+        sm.setState(SystemState::AUTO_REHAB);
+        return;
+    }
 }
 
+
 void StateHandlers::handleAutoRehab(
-    StateMachine& state_machine,
+    StateMachine& sm,
     int& t_controller,
     int& t_grafik,
     std::chrono::steady_clock::time_point& last_controller_time,
-    bool& animasi_grafik_berjalan,
-    std::string& arduino_feedback_state
-) {
-    // TODO: Implement rehab logic
+    bool& animasi,
+    std::string& arduino_state
+){
+    auto now = std::chrono::steady_clock::now();
+
+    // Kirim data controller tiap 100 ms
+    if (now - last_controller_time >= std::chrono::milliseconds(CONTROLLER_INTERVAL_MS)) {
+
+        int gaitStart = trajectory_manager->getGaitStartIndex();
+        int gaitEnd   = trajectory_manager->getGaitEndIndex();
+
+        // Sudah selesai semua titik → masuk POST_REHAB
+        if (t_controller >= (gaitEnd - gaitStart)) {
+            sm.startDelayTimer();
+            sm.setState(SystemState::POST_REHAB_DELAY);
+            return;
+        }
+
+        int actual_index = gaitStart + t_controller;
+
+        auto p = trajectory_manager->getPoint(actual_index);
+
+        serial_port->send(
+            "S" +
+            std::to_string(p.pos1) + "," +
+            std::to_string(p.pos2) + "," +
+            std::to_string(p.pos3) + "," +
+            std::to_string(p.velo1) + "," +
+            std::to_string(p.velo2) + "," +
+            std::to_string(p.velo3) + "," +
+            std::to_string(p.fc1)   + "," +
+            std::to_string(p.fc2)   + "," +
+            std::to_string(p.fc3)
+        );
+
+        t_controller++;
+        last_controller_time = now;
+    }
+
+    // Update grafik berjalan
+    if (animasi && t_grafik < trajectory_manager->getGraphEndIndex()) {
+        auto gx = trajectory_manager->getGraphDataX();
+        auto gy = trajectory_manager->getGraphDataY();
+
+        data_handler->updateAnimationPoint(
+            t_grafik - trajectory_manager->getGraphStartIndex(),
+            gx[t_grafik],
+            gy[t_grafik]
+        );
+
+        data_handler->setGraphCommand(3);
+
+        t_grafik++;
+    }
+
+    // Cek apakah Arduino minta retreat
+    readArduinoFeedback();
+    if (isRetreatTriggered()) {
+        sm.setState(SystemState::AUTO_RETREAT);
+        clearRetreatTrigger();
+    }
 }
+
 
 void StateHandlers::handleAutoRetreat(
-    StateMachine& state_machine,
+    StateMachine& sm,
     SerialPort& serial,
-    std::string& arduino_feedback_state,
-    std::chrono::steady_clock::time_point& last_retreat_time
-) {
-    // TODO: Implement retreat logic
+    std::string& arduino_state,
+    std::chrono::steady_clock::time_point& last_time
+){
+    static int retreat_index = 0;
+    static bool retreat_active = false;
+
+    auto now = std::chrono::steady_clock::now();
+
+    if (!retreat_active) {
+        retreat_index = sm.getTrajectoryIndex() - 1;
+        retreat_active = true;
+        std::cout << "RETREAT STARTED\n";
+    }
+
+    if (retreat_active && now - last_time >= std::chrono::milliseconds(100)) {
+
+        if (retreat_index >= 0) {
+            auto pt = trajectory_manager->getPoint(retreat_index);
+
+            serial.send(
+                "R" +
+                std::to_string(pt.pos1) + "," +
+                std::to_string(pt.pos2) + "," +
+                std::to_string(pt.pos3)
+            );
+
+            retreat_index--;
+        }
+        else {
+            serial.send("RETREAT_COMPLETE");
+            retreat_active = false;
+        }
+
+        last_time = now;
+    }
+
+    // User menekan RESET → masuk state RESETTING
+    if (data_handler->isButtonPressed(ModbusAddr::RESET)) {
+        serial.send("R");
+        data_handler->clearButton(ModbusAddr::RESET);
+        sm.setState(SystemState::RESETTING);
+    }
 }
+
 
 void StateHandlers::handlePostRehabDelay(
-    StateMachine& state_machine,
+    StateMachine& sm,
     int& t_controller,
-    int& t_grafik,
-    bool& animasi_grafik_berjalan,
-    std::chrono::steady_clock::time_point& delay_start_time
-) {
-    // TODO: Implement delay logic
+    int& t_graph,
+    bool& anim,
+    std::chrono::steady_clock::time_point& delay_start
+){
+    if (sm.isDelayTimerExpired(POST_REHAB_DELAY_SEC)) {
+
+        if (sm.hasCycleRemaining()) {
+
+            sm.incrementCycle();
+
+            // Reset untuk cycle berikutnya
+            t_controller = 0;
+            t_graph = trajectory_manager->getGraphStartIndex();
+            anim = true;
+
+            sm.setState(SystemState::AUTO_REHAB);
+        }
+        else {
+            // Semua selesai
+            serial_port->send("0");
+            sm.setState(SystemState::IDLE);
+        }
+    }
 }
+
 
 void StateHandlers::handleEmergencyStop(
-    StateMachine& state_machine,
+    StateMachine& sm,
     SerialPort& serial,
-    bool& animasi_grafik_berjalan
-) {
-    // TODO: Implement emergency stop logic
+    bool& anim
+){
+    serial.send("E");
+    anim = false;
+
+    if (data_handler->isButtonPressed(ModbusAddr::RESET)) {
+        serial.send("R");
+        data_handler->clearButton(ModbusAddr::RESET);
+        sm.setState(SystemState::RESETTING);
+    }
 }
 
+
 void StateHandlers::handleResetting(
-    StateMachine& state_machine,
+    StateMachine& sm,
     SerialPort& serial,
-    bool& animasi_grafik_berjalan
-) {
-    // TODO: Implement resetting logic
+    bool& anim
+){
+    if (data_handler->isButtonPressed(ModbusAddr::CALIBRATE)) {
+        data_handler->clearButton(ModbusAddr::CALIBRATE);
+        sm.setState(SystemState::IDLE);
+    }
 }
+
 
 //================= ARDUINO FEEDBACK =================//
 
