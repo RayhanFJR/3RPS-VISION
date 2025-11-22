@@ -28,24 +28,24 @@ TrajectoryManager::~TrajectoryManager() {
 
 void TrajectoryManager::configureTrajectory1() {
     trajectory1.total_points = 816;
-    trajectory1.gait_start_index = 101;
-    trajectory1.gait_end_index = 715;
-    trajectory1.graph_start_index = 101;
-    trajectory1.graph_end_index = 715;
+    trajectory1.gait_start_index = 1;
+    trajectory1.gait_end_index = 816;
+    trajectory1.graph_start_index = 1;
+    trajectory1.graph_end_index = 816;
 }
 
 void TrajectoryManager::configureTrajectory2() {
     trajectory2.total_points = 1370;
-    trajectory2.gait_start_index = 165;
-    trajectory2.gait_end_index = 1177;
+    trajectory2.gait_start_index = 1;
+    trajectory2.gait_end_index = 1370;
     trajectory2.graph_start_index = 1;
     trajectory2.graph_end_index = 1370;
 }
 
 void TrajectoryManager::configureTrajectory3() {
     trajectory3.total_points = 1370;
-    trajectory3.gait_start_index = 165;
-    trajectory3.gait_end_index = 1177;
+    trajectory3.gait_start_index = 1;
+    trajectory3.gait_end_index = 1370;
     trajectory3.graph_start_index = 1;
     trajectory3.graph_end_index = 1370;
 }
