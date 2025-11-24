@@ -4,7 +4,7 @@
 #ifndef TRAJECTORY_MANAGER_H
 #define TRAJECTORY_MANAGER_H
 
-#include "config.h"
+#include "../config/config.h"
 #include <string>
 
 //==================================================================
