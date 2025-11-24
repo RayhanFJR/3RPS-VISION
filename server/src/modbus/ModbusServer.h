@@ -7,7 +7,7 @@
 #define MODBUS_SERVER_H
 
 #include <modbus/modbus.h>
-#include "config.h"
+#include "../config/config.h"
 
 //==================================================================
 // CLASS MODBUS HANDLER

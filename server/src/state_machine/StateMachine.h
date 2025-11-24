@@ -5,9 +5,9 @@
 #ifndef STATE_MACHINE_H
 #define STATE_MACHINE_H
 
-#include "TrajectoryData.h"
-#include "SerialCommunication.h"
-#include "ModbusHandler.h"
+#include "../trajectory/TrajectoryManager.h"
+#include "../serial/SerialPort.h"
+#include "../modbus/ModbusServer.h"
 #include <chrono>
 
 //==================================================================
