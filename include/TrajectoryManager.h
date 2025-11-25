@@ -50,7 +50,8 @@ private:
     
     // Helper functions
     bool loadDataGrafik(const std::string& filename, float array[][2], int expectedCount);
-    bool loadDoubleArray(const std::string& filename, double* array, int size);
+    bool loadDoubleArray(const std::string& filename, double* array, int size,
+                         bool allowShortByTwo = false);
 };
 
 #endif // TRAJECTORYMANAGER_H

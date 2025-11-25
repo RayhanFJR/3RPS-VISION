@@ -84,7 +84,8 @@ bool TrajectoryManager::loadDataGrafik(const std::string& filename, float array[
     return count == expectedCount;
 }
 
-bool TrajectoryManager::loadDoubleArray(const std::string& filename, double* array, int size) {
+bool TrajectoryManager::loadDoubleArray(const std::string& filename, double* array, int size,
+                                        bool allowShortByTwo) {
     std::ifstream file(filename);
     if (!file.is_open()) {
         std::cerr << "Error: Tidak dapat membuka file " << filename << std::endl;
@@ -99,7 +100,23 @@ bool TrajectoryManager::loadDoubleArray(const std::string& filename, double* arr
     
     file.close();
     std::cout << "Loaded " << count << " values from " << filename << std::endl;
-    return count == size;
+    
+    if (count == size) {
+        return true;
+    }
+    
+    if (allowShortByTwo && count == size - 2 && count > 0) {
+        double lastValue = array[count - 1];
+        array[count] = lastValue;
+        array[count + 1] = lastValue;
+        std::cout << "Warning: " << filename 
+                  << " kekurangan 2 data, mengisi nilai akhir secara otomatis." << std::endl;
+        return true;
+    }
+    
+    std::cerr << "Error: Jumlah data di " << filename << " tidak sesuai ("
+              << "diharapkan " << size << ", terbaca " << count << ")." << std::endl;
+    return false;
 }
 
 bool TrajectoryManager::loadTrajectory(int trajNum, const std::string& basePath) {
@@ -140,9 +157,9 @@ bool TrajectoryManager::loadTrajectory(int trajNum, const std::string& basePath)
     
     bool success = true;
     success &= loadDataGrafik(folder + "grafik.txt", traj->data_grafik, expectedPoints);
-    success &= loadDoubleArray(folder + "pos1.txt", traj->referencePos1, expectedPoints + 2);
-    success &= loadDoubleArray(folder + "pos2.txt", traj->referencePos2, expectedPoints + 2);
-    success &= loadDoubleArray(folder + "pos3.txt", traj->referencePos3, expectedPoints + 2);
+    success &= loadDoubleArray(folder + "pos1.txt", traj->referencePos1, expectedPoints + 2, true);
+    success &= loadDoubleArray(folder + "pos2.txt", traj->referencePos2, expectedPoints + 2, true);
+    success &= loadDoubleArray(folder + "pos3.txt", traj->referencePos3, expectedPoints + 2, true);
     success &= loadDoubleArray(folder + "velo1.txt", traj->referenceVelo1, expectedPoints);
     success &= loadDoubleArray(folder + "velo2.txt", traj->referenceVelo2, expectedPoints);
     success &= loadDoubleArray(folder + "velo3.txt", traj->referenceVelo3, expectedPoints);
