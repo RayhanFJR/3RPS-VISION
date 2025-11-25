@@ -14,7 +14,7 @@ class ControlHandler;
 class ModbusHandler;
 class SerialHandler;
 
-SystemState handleIdleState(ModbusHandler& modbus, SerialHandler& serial,
+SystemState handleIdleState(ModbusHandler& modbus,
                            ControlHandler& control, bool& animasi_grafik,
                            int& t_controller, int& t_grafik,
                            std::chrono::steady_clock::time_point& lastTraTime,

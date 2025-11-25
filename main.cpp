@@ -104,7 +104,7 @@ int main() {
             // State machine
             switch (currentState) {
                 case SystemState::IDLE:
-                    currentState = handleIdleState(modbusHandler, serialHandler, controlHandler,
+                    currentState = handleIdleState(modbusHandler, controlHandler,
                                                   animasi_grafik_berjalan, t_controller, t_grafik,
                                                   lastTraTime, lastGrafikTime,
                                                   last_threshold1, last_threshold2);

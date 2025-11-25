@@ -18,8 +18,8 @@ const int POST_REHAB_DELAY_SEC = 5;
 
 // *** KONFIGURASI FILTER GRAFIK HMI (PER TRAJEKTORI) ***
 // Trajektori 1
-const int GRAFIK_START_INDEX_T1 = 101;
-const int GRAFIK_END_INDEX_T1 = 715;
+const int GRAFIK_START_INDEX_T1 = 1;
+const int GRAFIK_END_INDEX_T1 = 816;
 const int GAIT_START_INDEX_T1 = 101;
 const int GAIT_END_INDEX_T1 = 715;
 

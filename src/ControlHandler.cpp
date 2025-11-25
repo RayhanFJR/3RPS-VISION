@@ -75,6 +75,23 @@ void ControlHandler::startRehabCycle(bool& animasi_grafik, int& t_controller, in
     mb_mapping->tab_registers[ModbusAddr::START] = 0;
 }
 
+void ControlHandler::advanceToNextCycle(bool& animasi_grafik, int& t_controller, int& t_grafik) {
+    if (current_cycle < target_cycle) {
+        current_cycle++;
+    }
+    
+    std::cout << "\n=== MELANJUTKAN KE CYCLE " << current_cycle
+              << "/" << target_cycle << " ===" << std::endl;
+    
+    t_controller = 0;
+    t_grafik = trajectoryManager.getGraphStartIndex();
+    animasi_grafik = true;
+    
+    graphManager.clearChannel1Data();
+    graphManager.resetAnimationCounter();
+    modbusHandler.writeFloat(ModbusAddr::REALTIME_LOAD_CELL, 0.0f);
+}
+
 void ControlHandler::updateThresholds(int& last_thresh1, int& last_thresh2) {
     modbus_mapping_t* mb_mapping = modbusHandler.getMapping();
     if (mb_mapping == nullptr) return;

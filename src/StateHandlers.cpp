@@ -7,7 +7,7 @@
 #include <iostream>
 #include <chrono>
 
-SystemState handleIdleState(ModbusHandler& modbus, SerialHandler& serial,
+SystemState handleIdleState(ModbusHandler& modbus,
                            ControlHandler& control, bool& animasi_grafik,
                            int& t_controller, int& t_grafik,
                            std::chrono::steady_clock::time_point& lastTraTime,
@@ -93,20 +93,7 @@ SystemState handlePostRehabDelay(std::chrono::steady_clock::time_point& delaySta
         
         // Check if more cycles remaining
         if (current_cycle < target_cycle) {
-            // Continue to next cycle
-            // Note: This should be handled by ControlHandler, but for now we do it here
-            std::cout << "\n=== MELANJUTKAN KE CYCLE " << (current_cycle + 1) 
-                      << "/" << target_cycle << " ===" << std::endl;
-            
-            // Reset for next cycle
-            modbus_mapping_t* mb_mapping = modbus.getMapping();
-            if (mb_mapping != nullptr) {
-                // Clear channel 1 data would be done by GraphManager
-                t_controller = 0;
-                // t_grafik should be reset to graph start index
-                animasi_grafik = true;
-            }
-            
+            control.advanceToNextCycle(animasi_grafik, t_controller, t_grafik);
             lastTraTime = std::chrono::steady_clock::now();
             lastGrafikTime = std::chrono::steady_clock::now();
             

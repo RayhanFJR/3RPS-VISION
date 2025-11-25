@@ -52,6 +52,7 @@ public:
     int getTargetCycle() const { return target_cycle; }
     int getCurrentCycle() const { return current_cycle; }
     void resetCycle() { current_cycle = 0; target_cycle = 1; }
+    void advanceToNextCycle(bool& animasi_grafik, int& t_controller, int& t_grafik);
     
     // Retreat status
     bool isRetreatActive() const { return retreatActive; }
