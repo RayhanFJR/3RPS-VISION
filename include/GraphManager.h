@@ -2,6 +2,7 @@
 #define GRAPHMANAGER_H
 
 #include <modbus/modbus.h>
+#include "ModbusHandler.h"
 #include "TrajectoryManager.h"
 
 class GraphManager {

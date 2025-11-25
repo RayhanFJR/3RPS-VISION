@@ -5,6 +5,7 @@
 #include <boost/asio.hpp>
 #include <chrono>
 #include "StateMachine.h"
+#include "ModbusHandler.h"
 #include "TrajectoryManager.h"
 #include "SerialHandler.h"
 #include "GraphManager.h"
