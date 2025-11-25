@@ -25,7 +25,7 @@ using namespace boost::asio;
 int main() {
     // Initialize trajectory manager
     TrajectoryManager trajectoryManager;
-    if (!trajectoryManager.loadAllTrajectoryData("../data")) {
+    if (!trajectoryManager.loadAllTrajectoryData("data")) {
         std::cerr << "Fatal Error: Cannot load trajectory data. Exiting..." << std::endl;
         return 1;
     }

@@ -12,7 +12,7 @@ public:
     ~TrajectoryManager();
     
     // Loading functions
-    bool loadAllTrajectoryData(const std::string& basePath = "../data");
+    bool loadAllTrajectoryData(const std::string& basePath = "data");
     bool loadTrajectory(int trajNum, const std::string& basePath);
     
     // Trajectory switching
