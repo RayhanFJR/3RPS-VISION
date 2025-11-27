@@ -106,15 +106,23 @@ SystemState handlePostRehabDelay(std::chrono::steady_clock::time_point& delaySta
             return SystemState::AUTO_REHAB;
         } 
         else {
-            // All cycles completed - trigger manual reverse to zero
+            // All cycles completed - return to IDLE for manual retreat
             std::cout << "\n=== SEMUA CYCLE SELESAI ===" << std::endl;
             std::cout << "Total cycle completed: " << current_cycle << std::endl;
-            std::cout << "Menjalankan mundur otomatis untuk kembali ke 0..." << std::endl;
+            std::cout << "Sistem kembali ke IDLE. Gunakan kontrol manual mundur untuk kembali ke posisi awal." << std::endl;
             
-            control.startAutoReturnToZero(t_controller);
+            control.resetCycle();
             t_controller = 0;
+            t_grafik = 0;
             animasi_grafik = false;
-            return SystemState::AUTO_RETREAT;
+            
+            modbus_mapping_t* mb_mapping = modbus.getMapping();
+            if (mb_mapping != nullptr) {
+                mb_mapping->tab_registers[ModbusAddr::COMMAND_REG] = 0;
+                mb_mapping->tab_registers[ModbusAddr::START] = 0;
+            }
+            
+            return SystemState::IDLE;
         }
     }
     return SystemState::POST_REHAB_DELAY;
