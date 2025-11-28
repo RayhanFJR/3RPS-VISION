@@ -64,14 +64,11 @@ void ControlHandler::startRehabCycle(bool& animasi_grafik, int& t_controller, in
     mb_mapping->tab_registers[ModbusAddr::COMMAND_REG] = 1;
     animasi_grafik = true;
     t_controller = 0;
-    // Sinkronkan t_grafik dengan posisi controller (mulai dari gaitStartIndex)
-    t_grafik = trajectoryManager.getGaitStartIndex();
+    // Mulai dari graphStartIndex untuk mengirim seluruh trajectory dengan velocity yang benar
+    t_grafik = trajectoryManager.getGraphStartIndex();
     
-    // Set animasi counter ke posisi awal yang sesuai dengan gaitStartIndex
-    int grafik_start = trajectoryManager.getGraphStartIndex();
-    int gait_start = trajectoryManager.getGaitStartIndex();
-    int initial_hmi_index = gait_start - grafik_start;
-    graphManager.setAnimationCounter(initial_hmi_index);
+    // Set animasi counter ke posisi awal (0 karena mulai dari graphStartIndex)
+    graphManager.setAnimationCounter(0);
     
     retreatActive = false;
     retreatIndex = 0;
@@ -92,18 +89,15 @@ void ControlHandler::advanceToNextCycle(bool& animasi_grafik, int& t_controller,
               << "/" << target_cycle << " ===" << std::endl;
     
     t_controller = 0;
-    // Sinkronkan t_grafik dengan posisi controller (mulai dari gaitStartIndex)
-    t_grafik = trajectoryManager.getGaitStartIndex();
+    // Mulai dari graphStartIndex untuk mengirim seluruh trajectory dengan velocity yang benar
+    t_grafik = trajectoryManager.getGraphStartIndex();
     animasi_grafik = true;
     
     graphManager.clearChannel1Data();
     graphManager.resetAnimationCounter();
     
-    // Set animasi counter ke posisi awal yang sesuai dengan gaitStartIndex
-    int grafik_start = trajectoryManager.getGraphStartIndex();
-    int gait_start = trajectoryManager.getGaitStartIndex();
-    int initial_hmi_index = gait_start - grafik_start;
-    graphManager.setAnimationCounter(initial_hmi_index);
+    // Set animasi counter ke posisi awal (0 karena mulai dari graphStartIndex)
+    graphManager.setAnimationCounter(0);
     
     modbusHandler.writeFloat(ModbusAddr::REALTIME_LOAD_CELL, 0.0f);
 }
@@ -244,16 +238,20 @@ void ControlHandler::processAutoRehab(SystemState& currentState, int& t_controll
         std::string arduinoFeedbackState = "running"; // Should be passed as parameter
         
         if (arduinoFeedbackState == "running") {
-            int jumlah_titik_gait = trajectoryManager.getGaitPointCount();
-            if (t_controller < jumlah_titik_gait) {
-                int actual_index = trajectoryManager.getGaitStartIndex() + t_controller;
+            int grafik_start = trajectoryManager.getGraphStartIndex();
+            int grafik_end = trajectoryManager.getGraphEndIndex();
+            int jumlah_titik_total = grafik_end - grafik_start;
+            
+            // Kirim seluruh trajectory dari graphStartIndex sampai graphEndIndex
+            // untuk memastikan velocity benar di semua bagian (termasuk di luar gait range)
+            if (t_controller < jumlah_titik_total) {
+                int actual_index = grafik_start + t_controller;
                 sendControllerData(actual_index);
                 
                 // Sinkronkan t_grafik dengan actual_index controller
                 t_grafik = actual_index;
                 
                 // Update grafik animasi jika masih dalam range
-                int grafik_end = trajectoryManager.getGraphEndIndex();
                 if (animasi_grafik && t_grafik < grafik_end) {
                     graphManager.updateGraphAnimation(t_grafik);
                 } else if (t_grafik >= grafik_end) {
