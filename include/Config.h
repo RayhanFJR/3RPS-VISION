@@ -26,7 +26,7 @@ const int GAIT_END_INDEX_T1 = 715;
 // Trajektori 2
 const int GRAFIK_START_INDEX_T2 = 1;
 const int GRAFIK_END_INDEX_T2 = 1370;
-const int GAIT_START_INDEX_T2 = 165;
+const int GAIT_START_INDEX_T2 = 278;
 const int GAIT_END_INDEX_T2 = 1177;
 
 // Trajektori 3
