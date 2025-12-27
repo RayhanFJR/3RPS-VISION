@@ -57,11 +57,15 @@ const int admittanceUpdateInterval = 10;  // 10ms = 100Hz update rate
 // ADMITTANCE CONTROL PARAMETERS
 //==================================================================
 // Transfer Function: Z(s) = F_external / (M*s^2 + B*s + K)
-// Z(s) = F_ext / (101.7*s^2 + 500*s + 614.1)
+// Original: Z(s) = F_ext / (101.7*s^2 + 500*s + 614.1)
+// TUNED FOR BETTER RESPONSE: Reduced values for higher compliance
 
-const float M_adm = 101.7;    // Virtual mass (kg)
-const float B_adm = 500.0;    // Virtual damping (N·s/m)
-const float K_adm = 614.1;    // Virtual stiffness (N/m)
+float M_adm = 10.0;     // Virtual mass (kg) - REDUCED from 101.7
+float B_adm = 50.0;     // Virtual damping (N·s/m) - REDUCED from 500
+float K_adm = 100.0;    // Virtual stiffness (N/m) - REDUCED from 614.1
+
+// Compliance gain multiplier (adjustable via serial command)
+float admittanceGain = 1.0;
 
 // Admittance state variables (untuk diskrit integration)
 float Z_adm = 0.0;       // Displacement dari admittance (m)
@@ -172,8 +176,11 @@ void updateAdmittanceControl(float F_external, float dt) {
     // Admittance equation: M*Z'' + B*Z' + K*Z = F_external
     // Solving for Z'': Z'' = (F_external - B*Z' - K*Z) / M
     
+    // Apply gain multiplier to external force
+    float F_scaled = F_external * admittanceGain;
+    
     // Calculate acceleration
-    Zddot_adm = (F_external - B_adm * Zdot_adm - K_adm * Z_adm) / M_adm;
+    Zddot_adm = (F_scaled - B_adm * Zdot_adm - K_adm * Z_adm) / M_adm;
     
     // Euler integration untuk velocity
     Zdot_adm = Zdot_adm_prev + Zddot_adm * dt;
@@ -428,12 +435,24 @@ void parseAdmittanceParams(String data) {
     String paramStr = data.substring(0, commaIndex1);
     String valueStr = data.substring(commaIndex1 + 1);
     
-    // This is placeholder - in actual implementation, you'd modify M_adm, B_adm, K_adm
-    // For now, just acknowledge
-    Serial.print("Admittance param update: ");
-    Serial.print(paramStr);
-    Serial.print(" = ");
-    Serial.println(valueStr);
+    float value = valueStr.toFloat();
+    
+    // Parse parameter type: M, B, K, or G (gain)
+    if (paramStr == "M") {
+        M_adm = value;
+        Serial.print("Virtual Mass M = "); Serial.println(M_adm);
+    } else if (paramStr == "B") {
+        B_adm = value;
+        Serial.print("Virtual Damping B = "); Serial.println(B_adm);
+    } else if (paramStr == "K") {
+        K_adm = value;
+        Serial.print("Virtual Stiffness K = "); Serial.println(K_adm);
+    } else if (paramStr == "G") {
+        admittanceGain = value;
+        Serial.print("Admittance Gain = "); Serial.println(admittanceGain);
+    } else {
+        Serial.println("Unknown parameter. Use M, B, K, or G");
+    }
 }
 
 void parseThresholds(String data) {
@@ -828,11 +847,15 @@ void loop() {
                 Serial.print("M (Virtual Mass): "); Serial.print(M_adm); Serial.println(" kg");
                 Serial.print("B (Virtual Damping): "); Serial.print(B_adm); Serial.println(" N·s/m");
                 Serial.print("K (Virtual Stiffness): "); Serial.print(K_adm); Serial.println(" N/m");
+                Serial.print("Gain Multiplier: "); Serial.println(admittanceGain);
                 Serial.println("\nCurrent States:");
                 Serial.print("Z (Displacement): "); Serial.print(Z_adm * 1000, 4); Serial.println(" mm");
                 Serial.print("Zdot (Velocity): "); Serial.print(Zdot_adm * 1000, 4); Serial.println(" mm/s");
                 Serial.print("Zddot (Acceleration): "); Serial.print(Zddot_adm * 1000, 4); Serial.println(" mm/s²");
                 Serial.print("External Force: "); Serial.print(latestValidLoad, 2); Serial.println(" N");
+                Serial.println("\nCompliance Analysis:");
+                float static_compliance = 1000.0 / K_adm;  // mm/N
+                Serial.print("Static Compliance: "); Serial.print(static_compliance, 2); Serial.println(" mm/N");
                 Serial.println("=================================\n");
             }
             
@@ -852,7 +875,19 @@ void loop() {
                 manipulatorState = 1;
             } else {
                 long effectiveValue = readHX711() - loadCellOffset;
-                latestValidLoad = effectiveValue / 10000.0;
+                float rawLoad = effectiveValue / 10000.0;
+                
+                // FORCE TO ZERO IF NEGATIVE (prevent sensor noise)
+                if (rawLoad < 0.0) {
+                    rawLoad = 0.0;
+                }
+                
+                // Optional: Add upper limit to prevent extreme values
+                if (rawLoad > 100.0) {  // Max 100N
+                    rawLoad = 100.0;
+                }
+                
+                latestValidLoad = rawLoad;
                 int roundValue = round(latestValidLoad);
                 
                 if (roundValue >= threshold2) {
@@ -987,7 +1022,19 @@ void loop() {
         // Read load cell even in manual mode
         if (currentTime - lastLoadTime >= loadCellInterval && ENABLE_ADAPTIVE_MANUAL) {
             long effectiveValue = readHX711() - loadCellOffset;
-            latestValidLoad = effectiveValue / 10000.0;
+            float rawLoad = effectiveValue / 10000.0;
+            
+            // FORCE TO ZERO IF NEGATIVE
+            if (rawLoad < 0.0) {
+                rawLoad = 0.0;
+            }
+            
+            // Optional: Add upper limit
+            if (rawLoad > 100.0) {
+                rawLoad = 100.0;
+            }
+            
+            latestValidLoad = rawLoad;
             lastLoadTime = currentTime;
         }
         
