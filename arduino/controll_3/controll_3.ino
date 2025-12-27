@@ -573,16 +573,17 @@ void calculateCTC() {
 void calculateCTCWithAdmittance() {
     // Modify reference positions based on admittance displacement
     // Z_adm is the compliance displacement in meters
-    // We add this to the trajectory reference to create compliant behavior
+    // IMPORTANT: SUBTRACT Z_adm to make robot retreat when force is applied
+    // When external force increases → Z_adm increases → robot moves backward (compliant behavior)
     
-    float refPos1_modified = refPos1 + (Z_adm * 1000.0);  // Convert Z_adm to mm
-    float refPos2_modified = refPos2 + (Z_adm * 1000.0);
-    float refPos3_modified = refPos3 + (Z_adm * 1000.0);
+    float refPos1_modified = refPos1 - (Z_adm * 1000.0);  // SUBTRACT for compliance
+    float refPos2_modified = refPos2 - (Z_adm * 1000.0);
+    float refPos3_modified = refPos3 - (Z_adm * 1000.0);
     
-    // Also modify reference velocities
-    float refVelo1_modified = refVelo1 + Zdot_adm;
-    float refVelo2_modified = refVelo2 + Zdot_adm;
-    float refVelo3_modified = refVelo3 + Zdot_adm;
+    // Also modify reference velocities (negative for retreat)
+    float refVelo1_modified = refVelo1 - Zdot_adm;
+    float refVelo2_modified = refVelo2 - Zdot_adm;
+    float refVelo3_modified = refVelo3 - Zdot_adm;
     
     ErrPos1 = Error(refPos1_modified, ActPos1);
     ErrPos2 = Error(refPos2_modified, ActPos2);
