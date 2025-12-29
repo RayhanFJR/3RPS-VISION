@@ -361,41 +361,27 @@ void parseTrajectoryCommand(String data, bool isRetreat) {
     String refFc2Str = data.substring(0, commaIndex8);
     String refFc3Str = data.substring(commaIndex8 + 1);
     
-    // Only update trajectory if NOT paused
-    if (!trajectoryPaused) {
-        refPos1 = refPos1Str.toFloat();
-        refPos2 = refPos2Str.toFloat();
-        refPos3 = refPos3Str.toFloat();
-        refVelo1 = refVelo1Str.toFloat();
-        refVelo2 = refVelo2Str.toFloat();
-        refVelo3 = refVelo3Str.toFloat();
-        refFc1 = refFc1Str.toFloat();
-        refFc2 = refFc2Str.toFloat();
-        refFc3 = refFc3Str.toFloat();
-        
-        if (isRetreat) {
-            refVelo1 *= RETREAT_VELOCITY_SCALE;
-            refVelo2 *= RETREAT_VELOCITY_SCALE;
-            refVelo3 *= RETREAT_VELOCITY_SCALE;
-        }
+    // CRITICAL FIX: IGNORE incoming trajectory if paused
+    if (trajectoryPaused) {
+        // Don't update any reference, just discard this command
+        return;  // Exit early, trajectory stays frozen
     }
-    // If paused, store the incoming trajectory but don't apply it yet
-    else {
-        pausedRefPos1 = refPos1Str.toFloat();
-        pausedRefPos2 = refPos2Str.toFloat();
-        pausedRefPos3 = refPos3Str.toFloat();
-        pausedRefVelo1 = refVelo1Str.toFloat();
-        pausedRefVelo2 = refVelo2Str.toFloat();
-        pausedRefVelo3 = refVelo3Str.toFloat();
-        pausedRefFc1 = refFc1Str.toFloat();
-        pausedRefFc2 = refFc2Str.toFloat();
-        pausedRefFc3 = refFc3Str.toFloat();
-        
-        if (isRetreat) {
-            pausedRefVelo1 *= RETREAT_VELOCITY_SCALE;
-            pausedRefVelo2 *= RETREAT_VELOCITY_SCALE;
-            pausedRefVelo3 *= RETREAT_VELOCITY_SCALE;
-        }
+    
+    // Only update if NOT paused
+    refPos1 = refPos1Str.toFloat();
+    refPos2 = refPos2Str.toFloat();
+    refPos3 = refPos3Str.toFloat();
+    refVelo1 = refVelo1Str.toFloat();
+    refVelo2 = refVelo2Str.toFloat();
+    refVelo3 = refVelo3Str.toFloat();
+    refFc1 = refFc1Str.toFloat();
+    refFc2 = refFc2Str.toFloat();
+    refFc3 = refFc3Str.toFloat();
+    
+    if (isRetreat) {
+        refVelo1 *= RETREAT_VELOCITY_SCALE;
+        refVelo2 *= RETREAT_VELOCITY_SCALE;
+        refVelo3 *= RETREAT_VELOCITY_SCALE;
     }
 }
 
@@ -981,8 +967,8 @@ void loop() {
                 pausedRefFc2 = refFc2;
                 pausedRefFc3 = refFc3;
                 
-                // Notify that trajectory is paused
-                Serial.println("TRAJECTORY_PAUSED");
+                // CRITICAL: Tell PC to STOP sending trajectory
+                Serial.println("PAUSE_TRAJECTORY");
             }
             // CHECK IF TRAJECTORY CAN RESUME
             else if (F_external <= FORCE_PAUSE_THRESHOLD && trajectoryPaused) {
@@ -1000,8 +986,8 @@ void loop() {
                 refFc2 = pausedRefFc2;
                 refFc3 = pausedRefFc3;
                 
-                // Notify that trajectory resumed
-                Serial.println("TRAJECTORY_RESUMED");
+                // CRITICAL: Tell PC to RESUME sending trajectory
+                Serial.println("RESUME_TRAJECTORY");
             }
             
             lastAdmittanceTime = currentTime;
