@@ -229,17 +229,23 @@ void ControlHandler::startRetreatSequence(int currentIndex) {
 void ControlHandler::processRetreatSequence(std::chrono::steady_clock::time_point& lastTraTime) {
     auto currentTime = std::chrono::steady_clock::now();
     
-    if ((currentTime - lastTraTime) >= std::chrono::milliseconds(JEDA_KONTROLER_MS)) {
-        if (retreatIndex >= 0) {
+    if (retreatIndex >= 0) {
+        // FIX: Kirim data retreat pertama langsung tanpa delay
+        // Data berikutnya tetap dengan delay normal (100ms)
+        bool isFirstRetreatData = (retreatIndex == lastForwardIndex - 1);
+        bool shouldSend = isFirstRetreatData || 
+                         ((currentTime - lastTraTime) >= std::chrono::milliseconds(JEDA_KONTROLER_MS));
+        
+        if (shouldSend) {
             sendRetreatData(retreatIndex);
             retreatIndex--;
             lastTraTime = currentTime;
-        } else {
-            serialHandler.sendCommand("RETREAT_COMPLETE");
-            serialHandler.sendCommand("2");
-            retreatActive = false;
-            std::cout << "\n=== RETREAT SEQUENCE COMPLETED ===" << std::endl;
         }
+    } else {
+        serialHandler.sendCommand("RETREAT_COMPLETE");
+        serialHandler.sendCommand("2");
+        retreatActive = false;
+        std::cout << "\n=== RETREAT SEQUENCE COMPLETED ===" << std::endl;
     }
 }
 

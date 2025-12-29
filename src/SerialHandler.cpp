@@ -105,4 +105,4 @@ void SerialHandler::processArduinoFeedback(const std::string& data) {
     if (data.find("RETREAT") != std::string::npos) {
         std::cout << "[SAFETY] Retreat requested by Arduino" << std::endl;
     }
-}
+}  
