@@ -151,6 +151,12 @@ int main() {
             }
         }
         
+        // === Process retreat sequence (CRITICAL: Must be outside state machine) ===
+        // This ensures retreat sequence runs continuously, not just when modbus query arrives
+        if (currentState == SystemState::AUTO_RETREAT && controlHandler.isRetreatActive()) {
+            controlHandler.processRetreatSequence(lastTraTime);
+        }
+        
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     
