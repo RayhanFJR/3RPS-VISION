@@ -134,14 +134,8 @@ int main() {
             modbusHandler.reply(query, rc);
         }
         
-        // === CRITICAL: Process Arduino feedback FIRST ===
-        // This checks for PAUSE_TRAJECTORY and RESUME_TRAJECTORY signals
-        if (serialHandler.hasData()) {
-            std::string feedback = serialHandler.readData();
-            serialHandler.processArduinoFeedback(feedback);  // NEW: Detects pause/resume
-        }
-        
-        // Then process other Arduino feedback
+        // === Process Arduino feedback (SINGLE READ) ===
+        // ControlHandler will handle BOTH load cell AND pause/resume signals
         controlHandler.processArduinoFeedback(arduinoFeedbackState, currentState, t_controller);
         
         // === Process auto rehab with pause awareness ===
