@@ -77,6 +77,9 @@ void ControlHandler::startRehabCycle(bool& animasi_grafik, int& t_controller, in
     retreatIndex = 0;
     lastForwardIndex = 0;
     
+    // Reset pause state saat start
+    serialHandler.resetPauseState();
+    
     lastTraTime = std::chrono::steady_clock::now();
     lastGrafikTime = std::chrono::steady_clock::now();
     
@@ -106,6 +109,9 @@ void ControlHandler::advanceToNextCycle(bool& animasi_grafik, int& t_controller,
     graphManager.setAnimationCounter(initial_hmi_index);
     
     modbusHandler.writeFloat(ModbusAddr::REALTIME_LOAD_CELL, 0.0f);
+    
+    // Reset pause state untuk cycle baru
+    serialHandler.resetPauseState();
 }
 
 int ControlHandler::clampRetreatIndex(int controllerSteps) const {
@@ -181,6 +187,9 @@ void ControlHandler::processArduinoFeedback(std::string& arduinoFeedbackState,
     std::string resultString = serialHandler.readData();
     if (resultString.empty()) return;
     
+    // === CRITICAL: Check for pause/resume signals FIRST ===
+    serialHandler.processArduinoFeedback(resultString);
+    
     if (resultString.find("RETREAT") != std::string::npos && 
         currentState == SystemState::AUTO_REHAB) {
         std::cout << "\n!!! RETREAT COMMAND RECEIVED !!!" << std::endl;
@@ -240,6 +249,14 @@ void ControlHandler::processAutoRehab(SystemState& currentState, int& t_controll
                                       std::chrono::steady_clock::time_point& delayStartTime) {
     auto currentTime = std::chrono::steady_clock::now();
     
+    // === CRITICAL: Check if trajectory is paused by admittance control ===
+    if (serialHandler.isTrajectoryPaused()) {
+        // Trajectory is paused - DO NOT send new commands
+        // DO NOT increment t_controller
+        // This keeps the trajectory frozen at current position
+        return;  // Exit early, everything stays frozen
+    }
+    
     if ((currentTime - lastTraTime) >= std::chrono::milliseconds(JEDA_KONTROLER_MS)) {
         std::string arduinoFeedbackState = "running"; // Should be passed as parameter
         
@@ -260,7 +277,7 @@ void ControlHandler::processAutoRehab(SystemState& currentState, int& t_controll
                     animasi_grafik = true;  // Pastikan animasi tetap aktif
                 }
                 
-                // Kirim data controller
+                // Kirim data controller (will be blocked automatically if paused by SerialHandler)
                 sendControllerData(actual_index);
                 
                 t_controller++;
@@ -275,6 +292,8 @@ void ControlHandler::processAutoRehab(SystemState& currentState, int& t_controll
 }
 
 void ControlHandler::sendControllerData(int t) {
+    // NOTE: sendCommand will automatically check pause state in SerialHandler
+    // If paused, the command will be silently dropped
     std::stringstream ss;
     ss << "S" 
        << trajectoryManager.getActivePos1()[t] << "," 
@@ -290,6 +309,8 @@ void ControlHandler::sendControllerData(int t) {
 }
 
 void ControlHandler::sendRetreatData(int index) {
+    // NOTE: sendCommand will automatically check pause state in SerialHandler
+    // Retreat commands are also blocked during pause for consistency
     std::stringstream ss;
     ss << "R"
        << trajectoryManager.getActivePos1()[index] << "," 
@@ -303,4 +324,3 @@ void ControlHandler::sendRetreatData(int index) {
        << trajectoryManager.getActiveFc3()[index];
     serialHandler.sendCommand(ss.str());
 }
-

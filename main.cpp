@@ -1,6 +1,6 @@
 //==================================================================
 // SISTEM KONTROL REHABILITASI - MODULAR VERSION
-// With Multi-Trajectory Selection + Cycle Counter
+// With Multi-Trajectory Selection + Cycle Counter + Admittance Pause
 //==================================================================
 
 #include <iostream>
@@ -71,6 +71,7 @@ int main() {
     std::cout << "\n===========================================";
     std::cout << "\n  SISTEM KONTROL REHABILITASI";
     std::cout << "\n  Multi-Trajectory + Cycle Counter";
+    std::cout << "\n  + Admittance Control Support";
     std::cout << "\n  Modular Version";
     std::cout << "\n===========================================" << std::endl;
     
@@ -133,13 +134,27 @@ int main() {
             modbusHandler.reply(query, rc);
         }
         
-        // Process Arduino feedback
+        // === CRITICAL: Process Arduino feedback FIRST ===
+        // This checks for PAUSE_TRAJECTORY and RESUME_TRAJECTORY signals
+        if (serialHandler.hasData()) {
+            std::string feedback = serialHandler.readData();
+            serialHandler.processArduinoFeedback(feedback);  // NEW: Detects pause/resume
+        }
+        
+        // Then process other Arduino feedback
         controlHandler.processArduinoFeedback(arduinoFeedbackState, currentState, t_controller);
         
-        // Process auto rehab
+        // === Process auto rehab with pause awareness ===
         if (currentState == SystemState::AUTO_REHAB) {
-            controlHandler.processAutoRehab(currentState, t_controller, t_grafik,
-                                          animasi_grafik_berjalan, lastTraTime, delayStartTime);
+            // Only advance trajectory if NOT paused by admittance control
+            if (!serialHandler.isTrajectoryPaused()) {
+                controlHandler.processAutoRehab(currentState, t_controller, t_grafik,
+                                              animasi_grafik_berjalan, lastTraTime, delayStartTime);
+            } else {
+                // Trajectory is paused - do nothing, stay at current t_controller
+                // This prevents the "catching up" behavior when force is released
+                // NOTE: t_controller stays frozen, so when resumed, it continues smoothly
+            }
         }
         
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -151,4 +166,3 @@ int main() {
     
     return 0;
 }
-

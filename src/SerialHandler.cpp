@@ -5,7 +5,8 @@
 #include <termios.h>
 #include <array>
 
-SerialHandler::SerialHandler(io_context& io) : serial(io), io(io), isOpen(false) {
+SerialHandler::SerialHandler(io_context& io) 
+    : serial(io), io(io), isOpen(false), trajectoryPaused(false) {
 }
 
 SerialHandler::~SerialHandler() {
@@ -19,6 +20,7 @@ bool SerialHandler::initialize(const std::string& port, int baudRate) {
         serial.open(port);
         serial.set_option(serial_port_base::baud_rate(baudRate));
         isOpen = true;
+        trajectoryPaused = false;
         return true;
     } catch (const boost::system::system_error& e) {
         std::cerr << "Error membuka port serial: " << e.what() << std::endl;
@@ -31,11 +33,18 @@ void SerialHandler::close() {
     if (isOpen) {
         serial.close();
         isOpen = false;
+        trajectoryPaused = false;
     }
 }
 
 void SerialHandler::sendCommand(const std::string& cmd) {
     if (!isOpen) return;
+    
+    // CRITICAL: Don't send trajectory commands if paused
+    if (trajectoryPaused && (cmd[0] == 'S' || cmd[0] == 'R')) {
+        // Silently ignore trajectory commands during pause
+        return;
+    }
     
     std::string message = cmd + "\n";
     try {
@@ -81,3 +90,19 @@ float SerialHandler::parseValue(const std::string& data, const std::string& key)
     }
 }
 
+void SerialHandler::processArduinoFeedback(const std::string& data) {
+    // Check for pause/resume signals from Arduino
+    if (data.find("PAUSE_TRAJECTORY") != std::string::npos) {
+        trajectoryPaused = true;
+        std::cout << "[ADMITTANCE] Trajectory PAUSED by Arduino (external force detected)" << std::endl;
+    }
+    else if (data.find("RESUME_TRAJECTORY") != std::string::npos) {
+        trajectoryPaused = false;
+        std::cout << "[ADMITTANCE] Trajectory RESUMED (force released)" << std::endl;
+    }
+    
+    // Also check for retreat request (existing functionality)
+    if (data.find("RETREAT") != std::string::npos) {
+        std::cout << "[SAFETY] Retreat requested by Arduino" << std::endl;
+    }
+}
